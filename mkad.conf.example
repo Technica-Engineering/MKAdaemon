@@ -1,0 +1,257 @@
+# Copyright 2021 Technica Engineering
+#
+# This file fully configures the MKA daemon.
+#
+
+# Global settings -------------------------------------------------------------
+
+#### Setting "log_level", part of global settings
+# Logging level, one of {error, warning, info, debug}
+#
+# Example:
+log_level: debug
+
+#### Setting "verbosity", part of global settings
+# Verbosity only applies for debug logging level, from 0 to 3
+#
+# Example:
+verbosity: 1
+
+#### Setting "hello_time", part of global settings
+# Hello time is the MKPDU period when a connection is established,
+# applicable when delay_protect is disabled (milliseconds)
+#
+# Example:
+hello_time: 2000
+
+#### Setting "bounded_hello_time", part of global settings
+# Hello time applicable with delay_protect (milliseconds)
+#
+# Example:
+bounded_hello_time: 500
+
+#### Setting "life_time", part of global settings
+# Life time for a peer to transmit MKPDU's in order to consider it alive (milliseconds)
+#
+# Example:
+life_time: 6000
+
+#### Setting "sak_retire_time", part of global settings
+# During a key rotation, time to retire the previous SAK key (milliseconds)
+#
+# Example:
+sak_retire_time: 3000
+
+#### Setting "hello_time_rampup", part of global settings
+# Periods between initial MKA messages after linkup (milliseconds)
+#
+# Example:
+hello_time_rampup: 100 200 400 800 800
+
+#### Setting "transmit_empty_dist_sak", part of global settings
+# Whether to transmit empty dist_sak when working without MACSEC
+#
+# Example:
+transmit_empty_dist_sak: on
+
+#### Setting "transmit_empty_sak_use", part of global settings
+# Whether to transmit empty sak_use when working without MACSEC
+#
+# Example:
+transmit_empty_sak_use: on
+
+#### Setting "transmit_null_xpn", part of global settings
+# Whether to transmit a null XPN parameter when working without extended packet numbers.
+# NOTE: IEEE802.1X-2020 figure 11-16 note b states this parameter's PN as transmitted as zero when
+# the cipher suite does not support extended packet number, which corresponds to setting "on".
+#
+# Example:
+transmit_null_xpn: on
+
+#### Setting "secy_polling_ms", part of global settings
+# Phy driver polling time
+#
+# Example:
+secy_polling_ms: 500
+
+# Interface settings ----------------------------------------------------------
+
+#### List of interfaces expected to begin with YAML list "interfaces:"
+#
+# Example:
+#interfaces:
+
+#### Setting "device", part of interface settings.
+# Physical interface where MKAD will interact
+#
+# Example:
+#  - device: "eth0"
+
+#### Setting "protected_device", part of interface settings.
+# Virtual interface that MKAD will create for protected traffic.
+#
+# Example:
+#  - protected_device: "macsec0"
+
+#### Setting "intf_mode", part of interface settings.
+# Possible values: STATIC, DYNAMIC
+#
+# In STATIC mode, the protected device will be created at startup
+# (before MKA negotiation), in a disconnected state. It will switch
+# to connected when MKA is successful. In this mode, only 1 cipher
+# can be present on the allowed ciphers list.
+#
+# In DYNAMIC mode, multiple ciphers can be present on the allowed
+# ciphers list, and the right one will be negotiated during MKA.
+# In this mode, the protected device will not exist until MKA
+# negotiation has finished.
+#
+# Example:
+#  - intf_mode: STATIC
+
+#### Setting "macsec", part of interface settings.
+# MACSEC mode for this interface, possible settings:
+#   DISABLE     -> MKA negotiation without MACSEC
+#   INTEGRITY   -> Negotiates MACSEC with integrity only, no confidentiality
+#   CONF_0      -> Negotiates MACSEC with integrity and confidentiality, offset 0
+#   CONF_30     -> Negotiates MACSEC with integrity and confidentiality, offset 30
+#   CONF_50     -> Negotiates MACSEC with integrity and confidentiality, offset 50
+#
+# Example:
+#    macsec: INTEGRITY
+
+#### Setting "announcements", part of interface settings.
+# Whether to enable/disable secure announcements.
+# Currently under development.
+#
+# Example:
+#    announcements: off
+
+#### Setting "listener", part of interface settings.
+# Whether to enable/disable listener for secure announcements.
+# Currently under development.
+#
+# Example:
+#    listener: off
+
+#### Setting "kay", part of interface settings.
+# Whether to enable/disable KaY module in MKA. When KaY module is disabled,
+# no MACSEC is negotiated.
+#
+# NOTE: This setting applies during daemon startup and can be later modified
+# through public API call.
+#
+# Example:
+#    kay: on
+
+#### Setting "priority", part of interface settings.
+# Priority value, applicable when role is configured as AUTO
+#
+# Example:
+#    priority: 128
+
+#### Setting "role", part of interface settings.
+# Role for principal actor, possible settings:
+#   AUTO        -> Dynamically elect key server as per IEEE802.1X
+#   KEY_SERVER  -> Act as key server, no negotiation.
+#   KEY_CLIENT  -> Act as key client, no negotiation.
+#
+# Example:
+#    role: AUTO
+
+#### Setting "replay_protect", part of interface settings.
+# When specified, enables replay protection and sets replay protection window size.
+# When not specified, disables replay protection.
+#
+# Example:
+#    replay_protect: 0
+
+#### Setting "delay_protect", part of interface settings.
+# When enabled, performs frequent updates of the packet number on the receiving side
+# to prevent the possibility of an attacker delaying MACSEC frames.
+#
+# Example:
+#    delay_protect: on
+
+#### Setting "unauth_allowed", part of interface settings.
+# Determines when the Logon Process will tell the CP state
+# machine to provide unauthenticated connectivity, and takes one
+# of the following values:
+#   NEVER     -> Never
+#   IMMEDIATE -> Immediately, independently of any current or
+#                future attempts to authenticate using the PAE or MKA.
+#   AUTH_FAIL -> Not until an attempt has been made to
+#                authenticate using EAP, unless neither the Supplicant nor
+#                the Authenticator is enabled, and MKA has attempted to use
+#                any cached CAK (unless the KaY is not enabled).
+# Example:
+#    unauth_allowed: NEVER
+
+#### Setting "unsecure_allowed", part of interface settings.
+# Determines when the Logon Process will tell the CP state
+# machine to provide unauthenticated connectivity, and takes one
+# of the following values:
+#   NEVER      -> Never
+#   IMMEDIATE  -> Immediately, to provide connectivity concurrently with the 
+#                use of MKA with any CAK acquired through EAP.
+#   MKA_FAIL   -> Not until MKA has failed, or is not enabled.
+#   MKA_SERVER -> Only if directed by the MKA server.
+# Example:
+#    unsecure_allowed: NEVER
+
+#### Setting "ciphers", part of interface settings.
+# Sets a list of ciphers in order of preference. A non-listed cipher will not be permitted.
+# Limited to one cipher if intf_mode is STATIC
+# Possible ciphers: { GCM_AES_128, GCM_AES_256, GCM_AES_XPN_128, GCM_AES_XPN_256, NULL }
+#
+# Example:
+#    ciphers: GCM_AES_128 GCM_AES_256 GCM_AES_XPN_128 GCM_AES_XPN_256 NULL
+
+
+#### Setting "cak" and "ckn", part of interface settings.
+# This is the pre-shared key for MKA negotiation.
+# Expected format is a sequence of bytes in hex
+#
+# Example:
+#    cak: 50 7C C3 BE C3 DA 4C C7 4B 7F 10 12 11 DF 74 6C
+#    ckn: 12 34
+
+#### Setting "macsec_mode", part of interface settings.
+# Selects MACsec mode. Possible settings:
+#   SOFTWARE        -> Uses OS stack for MACsec protection
+#   OFFLOADING      -> Uses HW acceleration for MACsec protection (requires libnl and PHY driver support)
+#
+# Example:
+#    drv_macsec_mode: software
+
+interfaces:
+  - device: "eth0"
+    protected_device: "eth0.macsec"
+    intf_mode: STATIC
+    macsec: INTEGRITY
+    kay: on
+    priority: 11
+    role: AUTO
+    replay_protect: 0
+    delay_protect: on
+    unauth_allowed: never
+    unsecure_allowed: never
+    ciphers: GCM_AES_128
+    cak: 50 7C C3 BE C3 DA 4C C7 4B 7F 10 12 11 DF 74 6C
+    ckn: 12 34
+    drv_macsec_mode: software
+
+  - device: "eth1"
+    protected_device: "eth1.macsec"
+    intf_mode: DYNAMIC
+    macsec: CONF_0
+    kay: on
+    priority: 33
+    role: AUTO
+    replay_protect: 0
+    delay_protect: on
+    unauth_allowed: never
+    unsecure_allowed: never
+    ciphers: GCM_AES_256 GCM_AES_XPN_256
+    cak: 4A C5 21 23 CE 27 0D 6F 71 7E 6C 98 33 74 E2 54
+    ckn: 56 78

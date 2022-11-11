@@ -1,0 +1,67 @@
+#encoding: utf-8
+#vim syntax=python fileencoding=utf-8 tabstop=4 expandtab shiftwidth=4
+#
+################################################################################
+#
+# MKA daemon.
+# SPDX-FileCopyrightText: 2022 Technica Engineering GmbH <macsec@technica-engineering.de>
+# SPDX-License-Identifier: GPL-2.0-or-later
+# file: wscript
+#
+# © 2022 Technica Engineering GmbH.
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 2 of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program. If not, see https://www.gnu.org/licenses/
+#
+################################################################################
+
+from waflib import Build
+
+# This is target "test" invoked via "python waf test".
+# It can be invoked at root folder (all tests run) or in this specific folder (only tests defined here run).
+def test(ut):
+    # Emit friendly errors.
+    isinstance(ut, Build.BuildContext) or ut.fatal("Project is not configured. Please run 'python waf configure --top=../..'")
+
+    # Every call to ut() will create a compilation of a unit test.
+    ut(
+        # Give each test compilation a name. Individual tests can be invoked via "python waf test --targets=test_name"
+        name = "openssl_integration", # --> run me with: "python waf test --targets=openssl_integration"
+
+        source = "test-aes-wrap.cpp test-omac1.cpp test-sha1.cpp  test-aes-kdf.cpp" +
+                " ../../src/crypto/mka_crypto_openssl.c ../../src/crypto/aes-omac1.c ../../src/crypto/aes-kdf.c",
+
+        # Discard code coverage at file/folder level (test itself, third party code, etc.). Examples:
+        coverage_disable = ".",
+
+        # Defines below are passed to the compiler directly.
+        defines = [
+            "UNIT_TEST=1",
+            "MKA_RUNNING_OS=-1",
+            "MKA_ACTIVE_LOG_LEVEL=0",
+        ],
+
+        # Include path's are passed to the compiler directly.
+        includes = ". .. ../../src ../../src/crypto ../../src/utils ../../src/l2 ../../src/pae ../../src/linux_daemon",
+
+        # Extra cflags to be passed to the compiler. Consider GCC is used for compilation.
+        cflags = "-Wall",
+        ldflags = "-lcrypto -ldl",
+    )
+
+    # Repeat same test with other crypto libraries
+
+def options(opts):
+    pass
+
+def configure(conf):
+    pass
+

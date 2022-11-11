@@ -1,0 +1,76 @@
+/*******************************************************************************
+*
+* MKA daemon.
+* SPDX-FileCopyrightText: 2022 Technica Engineering GmbH <macsec@technica-engineering.de>
+* SPDX-License-Identifier: GPL-2.0-or-later
+* file: test-aes-wrap.cpp
+*
+* © 2022 Technica Engineering GmbH.
+*
+* This program is free software: you can redistribute it and/or modify it under
+* the terms of the GNU General Public License as published by the Free Software
+* Foundation, either version 2 of the License, or (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+* FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License along with
+* this program. If not, see https://www.gnu.org/licenses/
+*
+*******************************************************************************/
+
+#include <gtest/gtest.h>
+#include "mka_private.h"
+
+void print_hex(u8 *hex, int len){
+	printf("Hex: ");
+	for (int i=0;i<len;i++){
+		printf("%x ", hex[i]);
+	}
+	printf("\n");
+}
+
+TEST(aes_wrap, wrap_unwrap_case) {
+	//printf("AES Wrap Test 1 running.. ");
+	int result;
+	const u8 kek[] = {
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+		0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+	size_t kek_len = 16;
+	u8 plain[] = {
+		0x32, 0x3a, 0x72, 0x8e, 0x79, 0x6f, 0xe0, 0xca,
+		0x9f, 0x26, 0xd7, 0x7a, 0x85, 0x73, 0x73, 0x5a,
+		0x98, 0xa3, 0xf8, 0xaf, 0x2a, 0x7c, 0xc3, 0xe1,
+		0xa7, 0xe2, 0x6e, 0xd2, 0x8f, 0x4b, 0x8d, 0x3b,
+		0x98, 0xa3, 0xf8, 0xaf, 0x2a, 0x7c, 0xc3, 0xe1,
+		0xa7, 0xe2, 0x6e, 0xd2, 0x8f, 0x4b,	0x8d, 0x3b,
+		0x98, 0xa3, 0xf8, 0xaf, 0x2a, 0x7c, 0xc3, 0xe1,
+		0xa7, 0xe2, 0x6e, 0xd2, 0x8f, 0x4b, 0x8d, 0x3b};
+	int n = 8; // 8 blocks of 64 bits = 64 bytes
+	u8 cipher[72]; // 9 blocks of 64 bits = 72 bytes
+	u8 expected_cipher[] = {
+		0x7f, 0xdf, 0xd3, 0x6a, 0xd0, 0x52, 0x34, 0xa7,
+		0xc5, 0xd7, 0x0c, 0xf1, 0xcc, 0xdf, 0x2b, 0xb1,
+		0x80, 0x0e, 0x15, 0xc6, 0x49, 0x68, 0x8e, 0xf3,
+		0x7d, 0x35, 0xda, 0x23, 0x30, 0xdb, 0x52, 0xc5,
+		0x89, 0x05, 0xfd, 0x62, 0xbf, 0x47, 0xa2, 0xd9,
+		0x05, 0x4f, 0x8a, 0x62, 0x85, 0x89, 0x5b, 0xff,
+		0x56, 0x6e, 0xce, 0xf6, 0x17, 0x65, 0x1c, 0xc9,
+		0x84, 0xdc, 0x22, 0xf4, 0x32, 0x17, 0xb5, 0x74,
+		0x07, 0x4f, 0x70, 0xaf, 0x6d, 0x55, 0x36, 0xe3};
+	result = aes_wrap(kek, kek_len, n, plain, cipher);
+    ASSERT_EQ(0, result) << "aes_wrap function call results in error";
+	//print_hex(cipher,72);
+
+	result = memcmp(cipher, expected_cipher, sizeof(expected_cipher));
+    ASSERT_EQ(0, result) << "aes_wrap function call gave wrong result";
+
+	u8 plain_decrypted[64];
+	result = aes_unwrap(kek, kek_len, n,
+				    cipher, plain_decrypted);
+    ASSERT_EQ(0, result) << "aes_unwrap function call results in error";
+
+	result = memcmp(plain, plain_decrypted, sizeof(plain));
+    ASSERT_EQ(0, result) << "aes_unwrap function call gave wrong result";
+}

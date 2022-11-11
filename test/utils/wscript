@@ -1,0 +1,100 @@
+#encoding: utf-8
+#vim syntax=python fileencoding=utf-8 tabstop=4 expandtab shiftwidth=4
+#
+################################################################################
+#
+# MKA daemon.
+# SPDX-FileCopyrightText: 2022 Technica Engineering GmbH <macsec@technica-engineering.de>
+# SPDX-License-Identifier: GPL-2.0-or-later
+# file: wscript
+#
+# © 2022 Technica Engineering GmbH.
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 2 of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program. If not, see https://www.gnu.org/licenses/
+#
+################################################################################
+
+from waflib import Build
+
+# This is target "test" invoked via "python waf test".
+# It can be invoked at root folder (all tests run) or in this specific folder (only tests defined here run).
+def test(ut):
+    # Emit friendly errors.
+    isinstance(ut, Build.BuildContext) or ut.fatal("Project is not configured. Please run 'python waf configure --top=../..'")
+
+    # Every call to ut() will create a compilation of a unit test.
+    ut(
+        name = "logging_debug", # --> run me with: "python waf test --targets=logging_debug"
+        source = "test-log.cpp ../../src/utils/mka_logging.c",
+        coverage_disable = ".",
+        defines = [ "UNIT_TEST=1", "MKA_CFG_LOGGING_LEVEL=MKA_LOGLEVEL_DEBUG", "MKA_RUNNING_OS=-1",],
+        includes = ". .. mocks_log ../../src ../../src/pae ../../src/l2 ../../src/utils ../../src/crypto",
+        cflags = "-Wall -ggdb",
+        ldflags = "-ggdb",
+    )
+
+    ut(
+        name = "logging_warning", # --> run me with: "python waf test --targets=logging_warning"
+        source = "test-log.cpp ../../src/utils/mka_logging.c",
+        coverage_disable = ".",
+        defines = [ "UNIT_TEST=1", "MKA_CFG_LOGGING_LEVEL=MKA_LOGLEVEL_WARNING", "MKA_RUNNING_OS=-1",],
+        includes = ". .. mocks_log ../../src ../../src/pae ../../src/l2 ../../src/utils ../../src/crypto",
+        cflags = "-Wall -ggdb",
+        ldflags = "-ggdb",
+    )
+
+    ut(
+        name = "logging_buffer", # --> run me with: "python waf test --targets=logging_buffer"
+        source = "test-log-buffer.cpp ../../src/utils/mka_logging.c",
+        coverage_disable = ".",
+        defines = [ "UNIT_TEST=1", "MKA_CFG_LOGGING_LEVEL=MKA_LOGLEVEL_DEBUG", "MKA_RUNNING_OS=-1","MKA_CFG_LOG_TO_BUFFER=MKA_ON"],
+        includes = ". .. mocks_log ../../src ../../src/pae ../../src/l2 ../../src/utils ../../src/crypto",
+        cflags = "-Wall -ggdb",
+        ldflags = "-ggdb",
+    )
+
+    ut(
+        name = "fifo", # --> run me with: "python waf test --targets=fifo"
+        source = "test-fifo.cpp",
+        coverage_disable = ".",
+        defines = [ "UNIT_TEST=1", "MKA_CFG_LOGGING_LEVEL=MKA_LOGLEVEL_DEBUG", "MKA_RUNNING_OS=-1", ],
+        includes = ". .. mocks_log ../../src ../../src/pae ../../src/l2 ../../src/utils ../../src/crypto",
+        cflags = "-Wall -ggdb",
+        ldflags = "-ggdb",
+    )
+
+    ut(
+        name = "fsm", # --> run me with: "python waf test --targets=fsm"
+        source = "test-fsm.cpp ../../src/utils/mka_logging.c",
+        coverage_disable = ".",
+        defines = [ "UNIT_TEST=1", "MKA_CFG_LOGGING_LEVEL=MKA_LOGLEVEL_DEBUG", "MKA_RUNNING_OS=-1", "MKA_CFG_VERBOSITY=4"],
+        includes = ". .. mocks_log ../../src ../../src/pae ../../src/l2 ../../src/utils ../../src/crypto",
+        cflags = "-Wall -ggdb",
+        ldflags = "-ggdb",
+    )
+
+    ut(
+        name = "timer", # --> run me with: "python waf test --targets=timer"
+        source = "test-timer.cpp ",
+        coverage_disable = ".",
+        defines = [ "UNIT_TEST=1", "MKA_CFG_LOGGING_LEVEL=MKA_LOGLEVEL_DEBUG", "MKA_RUNNING_OS=-1", ],
+        includes = ". .. mocks_log ../../src ../../src/pae ../../src/l2 ../../src/utils ../../src/crypto",
+        cflags = "-Wall -ggdb",
+        ldflags = "-ggdb",
+    )
+
+def options(opts):
+    pass
+
+def configure(conf):
+    pass
+

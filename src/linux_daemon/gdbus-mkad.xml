@@ -1,0 +1,40 @@
+<node>
+  <interface name="de.technica_engineering.mkad.BUS">
+
+    <method name="SetEnable">
+      <arg direction="in" type="b" name="enabled"/>
+      <arg direction="out" type="b" name="result_ok"/>
+    </method>
+
+    <!-- True if bus is administratively enabled (as set by SetEnabled method)-->
+    <property name="IsEnabled" type="b" access="read"/>
+
+    <!--
+      BusInfo:
+        1. String: Status in human-readable form
+        2. Integer: Status in integer form
+        3. SCI
+
+    status: Value reflecting current status of MKA negotiation, possible values are:
+      0: MKA_STATUS_MACSEC_RUNNING: MKA session key has been agreed and MACsec link is currently up.
+      1: MKA_STATUS_WAITING_PEER_LINK: MKA is waiting for a link up of the underlying device to begin negotiation.
+      2: MKA_STATUS_WAITING_PEER: MKA is waiting for a remote peer to transmit MKPDU's to begin negotiation.
+      3: MKA_STATUS_IN_PROGRESS: MKA negotiation is ongoing.
+      6: MKA_STATUS_AUTH_FAIL_UNKNOWN_PEER: MKA negotiation is not possible because ICV's of remote peer are invalid (ICK and therefore CAK keys are different).
+      7: MKA_STATUS_AUTH_FAIL_CERTIFICATE: Reserved for future use.
+      FFh: MKA_STATUS_UNDEFINED: Undefined state, reported when the given bus is disabled.
+    -->
+    <property name="BusInfo" type="(uss)" access="read"/>
+
+    <!--Array of all interface stats-->
+    <property name="MacsecStats" type="a(st)" access="read"/>
+
+    <!--
+      MKA_EVENT_PORT_VALID: As per IEEE802.1X this event reflects an agreement of MKA, after negotiation with a remote peer, to protect the link. The link is not up yet.
+      MKA_EVENT_PORT_NOT_VALID: As per IEEE802.1X this event reflects that the link is no longer protected, protected interface can be considered down.
+      MKA_EVENT_LINKUP: Implementation specific event reflecting that the MACsec link is ready for transmission and reception of data, protected interface can be considered up.
+    -->
+    <property name="Event_action" type="(us)" access="read"/>
+
+  </interface>
+</node>
