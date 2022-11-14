@@ -14,5 +14,9 @@ jobs:
         fetch-depth: 0
 
     - name: Tests
-      run: python3 waf test
+      run: |
+        sudo apt-get update
+        sudo apt-get install build-essential libglib2.0-dev-bin pkg-config libssl-dev libyaml-dev libbsd-dev libnl-3-dev libnl-genl-3-dev libnl-route-3-dev libglib2.0-dev libxml2-dev lcov cmake
+        git submodule update --init --recursive
+        python3 waf test
 

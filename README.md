@@ -1,3 +1,4 @@
+[![ci](https://github.com/Technica-Engineering/MKAdaemon/actions/workflows/unittest.yml/badge.svg)](https://github.com/Technica-Engineering/MKAdaemon/actions/workflows/unittest.yml)
 # MACsec Key Agreement (MKA) daemon
 
 ## 1. About this project
