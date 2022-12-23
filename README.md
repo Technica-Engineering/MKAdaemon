@@ -104,7 +104,7 @@ JUnit-compatible XML files of unit test execution are available for CI automated
 
 ## 4 The Dbus interface
 - In order to use the Dbus interface in a system with policies enabled, you have to add policies to allow it
-> cp dbus-policies/com.technica.conf /usr/share/dbus-1/system.d/com.technica.conf
+> cp dbus-policies/de.technica_engineering.mkad.conf /usr/share/dbus-1/system.d/de.technica_engineering.mkad.conf
 - Then restart your computer
 
 ## 5 Contributing
