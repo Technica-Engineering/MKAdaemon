@@ -264,13 +264,13 @@ void* MKA_SECY_InstallKey(t_MKA_bus bus, t_MKA_key const*sak, t_MKA_ki const*ki,
             memcpy(&ctx->SAK, sak, sizeof(t_MKA_key));
             memcpy(&ctx->key_identifier, ki, sizeof(t_MKA_ki));
             /* SALT calculation */
-            for (uint8_t i = 0U; i < 8U; i++) {
+            for (uint8_t i = 4u; i < SALT_LEN; i++) {
                 ctx->SALT.key[i] = ctx->key_identifier.mi[i];
             }
-            ctx->SALT.key[8] = ctx->key_identifier.mi[8] ^ (uint8_t)((ctx->key_identifier.kn & 0xFF000000U) >> 24U);
-            ctx->SALT.key[9] = ctx->key_identifier.mi[9] ^ (uint8_t)((ctx->key_identifier.kn & 0x00FF0000U) >> 16U);
-            ctx->SALT.key[10]= ctx->key_identifier.mi[10]^ (uint8_t)((ctx->key_identifier.kn & 0x0000FF00U) >> 8U);
-            ctx->SALT.key[11]= ctx->key_identifier.mi[11]^ (uint8_t) (ctx->key_identifier.kn & 0x000000FFU);
+            ctx->SALT.key[3] = ctx->key_identifier.mi[3]^(uint8_t)((ctx->key_identifier.kn & 0x00FF0000U) >> 16U);
+            ctx->SALT.key[2] = ctx->key_identifier.mi[2]^(uint8_t)((ctx->key_identifier.kn & 0xFF000000U) >> 24U);
+            ctx->SALT.key[1] = ctx->key_identifier.mi[1]^(uint8_t) (ctx->key_identifier.kn & 0x000000FFU);
+            ctx->SALT.key[0] = ctx->key_identifier.mi[0]^(uint8_t)((ctx->key_identifier.kn & 0x0000FF00U) >> 8U);
 
             ctx->HASH.length = HASH_LEN;
             ctx->SALT.length = SALT_LEN;

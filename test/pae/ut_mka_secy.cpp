@@ -182,19 +182,15 @@ MATCHER_P(CompareSAK, varPtr, "Matcher to compare t_MKA_key") {
 }
 
 MATCHER_P(CompareHASH, varPtr, "Matcher to compare HASH key") {
-    if (memcmp(arg->key,varPtr->key,16) != 0) {
-        if(arg->length != 16) {
-            return false;
-        }
+    if ((memcmp(arg->key,varPtr->key,16) != 0) || (arg->length != 16)) {
+        return false;
     }
     return true;
 }
 
 MATCHER_P(CompareSALT, varPtr, "Matcher to compare SALT") {
-    if (memcmp(arg->key,varPtr->key,12) != 0) {
-        if(arg->length != 12) {
-            return false;
-        }
+    if ((memcmp(arg->key,varPtr->key,12) != 0) ||  (arg->length != 12)) {
+        return false;
     }
     return true;
 }
@@ -303,13 +299,13 @@ class Test_MKA_SECY_Base : public ::testing::Test {
         }
         test_ki.kn = 0x23898923;
 
-        for(uint8_t i = 0; i < 8; i++) {
-            test_salt.key[i] = i;
+        for (uint8_t i = 4u; i < 12; i++) {
+            test_salt.key[i] = test_ki.mi[i];
         }
-        test_salt.key[8] = test_ki.mi[8] ^ (uint8_t)((test_ki.kn & 0xFF000000U) >> 24U);
-        test_salt.key[9] = test_ki.mi[9] ^ (uint8_t)((test_ki.kn & 0x00FF0000U) >> 16U);
-        test_salt.key[10]= test_ki.mi[10]^ (uint8_t)((test_ki.kn & 0x0000FF00U) >> 8U);
-        test_salt.key[11]= test_ki.mi[11]^ (uint8_t) (test_ki.kn & 0x000000FFU);
+        test_salt.key[3] = test_ki.mi[3]^(uint8_t)((test_ki.kn & 0x00FF0000U) >> 16U);
+        test_salt.key[2] = test_ki.mi[2]^(uint8_t)((test_ki.kn & 0xFF000000U) >> 24U);
+        test_salt.key[1] = test_ki.mi[1]^(uint8_t) (test_ki.kn & 0x000000FFU);
+        test_salt.key[0] = test_ki.mi[0]^(uint8_t)((test_ki.kn & 0x0000FF00U) >> 8U);
         test_salt.length = 12;
 
         EXPECT_CALL(mocks, aes_encrypt_init(test_sak.key,test_sak.length))
@@ -359,13 +355,13 @@ class Test_MKA_SECY_Base : public ::testing::Test {
         }
         test_ki.kn = 0x23898923;
 
-        for(uint8_t i = 0; i < 8; i++) {
-            test_salt.key[i] = i;
+        for (uint8_t i = 4u; i < 12; i++) {
+            test_salt.key[i] = test_ki.mi[i];
         }
-        test_salt.key[8] = test_ki.mi[8] ^ (uint8_t)((test_ki.kn & 0xFF000000U) >> 24U);
-        test_salt.key[9] = test_ki.mi[9] ^ (uint8_t)((test_ki.kn & 0x00FF0000U) >> 16U);
-        test_salt.key[10]= test_ki.mi[10]^ (uint8_t)((test_ki.kn & 0x0000FF00U) >> 8U);
-        test_salt.key[11]= test_ki.mi[11]^ (uint8_t) (test_ki.kn & 0x000000FFU);
+        test_salt.key[3] = test_ki.mi[3]^(uint8_t)((test_ki.kn & 0x00FF0000U) >> 16U);
+        test_salt.key[2] = test_ki.mi[2]^(uint8_t)((test_ki.kn & 0xFF000000U) >> 24U);
+        test_salt.key[1] = test_ki.mi[1]^(uint8_t) (test_ki.kn & 0x000000FFU);
+        test_salt.key[0] = test_ki.mi[0]^(uint8_t)((test_ki.kn & 0x0000FF00U) >> 8U);
         test_salt.length = 12;
 
         EXPECT_CALL(mocks, aes_encrypt_init(test_sak.key,test_sak.length))
@@ -395,13 +391,13 @@ class Test_MKA_SECY_Base : public ::testing::Test {
         }
         test_ki.kn = 0x23898923;
 
-        for(uint8_t i = 0; i < 8; i++) {
-            test_salt.key[i] = i;
+        for (uint8_t i = 4u; i < 12; i++) {
+            test_salt.key[i] = test_ki.mi[i];
         }
-        test_salt.key[8] = test_ki.mi[8] ^ (uint8_t)((test_ki.kn & 0xFF000000U) >> 24U);
-        test_salt.key[9] = test_ki.mi[9] ^ (uint8_t)((test_ki.kn & 0x00FF0000U) >> 16U);
-        test_salt.key[10]= test_ki.mi[10]^ (uint8_t)((test_ki.kn & 0x0000FF00U) >> 8U);
-        test_salt.key[11]= test_ki.mi[11]^ (uint8_t) (test_ki.kn & 0x000000FFU);
+        test_salt.key[3] = test_ki.mi[3]^(uint8_t)((test_ki.kn & 0x00FF0000U) >> 16U);
+        test_salt.key[2] = test_ki.mi[2]^(uint8_t)((test_ki.kn & 0xFF000000U) >> 24U);
+        test_salt.key[1] = test_ki.mi[1]^(uint8_t) (test_ki.kn & 0x000000FFU);
+        test_salt.key[0] = test_ki.mi[0]^(uint8_t)((test_ki.kn & 0x0000FF00U) >> 8U);
         test_salt.length = 12;
 
         EXPECT_CALL(mocks, aes_encrypt_init(test_sak.key,test_sak.length))
