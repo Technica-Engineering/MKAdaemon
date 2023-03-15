@@ -905,7 +905,7 @@ t_MKA_result MKA_PHY_AddTxSA(t_MKA_bus bus, uint8_t an, t_MKA_pn next_pn, t_MKA_
 #ifdef CONFIG_MACSEC_XPN_SUPPORT
 	if (my_libnl_status->xpn) {
 		NLA_PUT_U64(msg, MACSEC_SA_ATTR_PN, next_pn);
-		NLA_PUT_U32(msg, MACSEC_SA_ATTR_SSCI, ssci);
+		NLA_PUT_U32(msg, MACSEC_SA_ATTR_SSCI, MKA_HTONL(ssci));
 		NLA_PUT(msg, MACSEC_SA_ATTR_SALT, salt->length, salt->key);
 	}
 	else
@@ -1066,7 +1066,7 @@ t_MKA_result MKA_PHY_AddRxSA(t_MKA_bus bus, uint8_t an, t_MKA_pn next_pn, t_MKA_
 #ifdef CONFIG_MACSEC_XPN_SUPPORT
 	if (my_libnl_status->xpn) {
 		NLA_PUT_U64(msg, MACSEC_SA_ATTR_PN, next_pn);
-		NLA_PUT_U32(msg, MACSEC_SA_ATTR_SSCI, ssci);
+		NLA_PUT_U32(msg, MACSEC_SA_ATTR_SSCI, MKA_HTONL(ssci));
 		NLA_PUT(msg, MACSEC_SA_ATTR_SALT, salt->length, salt->key);
 	}
 	else

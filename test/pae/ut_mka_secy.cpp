@@ -417,7 +417,7 @@ class Test_MKA_SECY_Base : public ::testing::Test {
         constexpr t_MKA_ssci test_ssci = 0x54332211;
         constexpr t_MKA_confidentiality_offset test_co = MKA_CONFIDENTIALITY_OFFSET_50;
 
-        EXPECT_CALL(mocks, MKA_PHY_AddTxSA(MKA_BUS,test_AN, test_nextPN, 0, CompareSAK(&test_sak), CompareHASH(&test_hash), CompareSALT(&test_salt), CompareKI(&test_ki), false))
+        EXPECT_CALL(mocks, MKA_PHY_AddTxSA(MKA_BUS,test_AN, test_nextPN, test_ssci, CompareSAK(&test_sak), CompareHASH(&test_hash), CompareSALT(&test_salt), CompareKI(&test_ki), false))
             .WillOnce(Return(MKA_OK));
         
         t_MKA_transmit_sa* sa_pointer = MKA_SECY_CreateTransmitSA(MKA_BUS, test_AN, test_nextPN, test_ssci, test_co, key_pointer);
@@ -442,7 +442,7 @@ class Test_MKA_SECY_Base : public ::testing::Test {
         constexpr t_MKA_pn test_lowestPN = 0x87541269;
         constexpr t_MKA_ssci test_ssci = 0x11223345;
 
-        EXPECT_CALL(mocks, MKA_PHY_AddRxSA(MKA_BUS,test_AN, test_lowestPN, 0, CompareSAK(&test_sak), CompareHASH(&test_hash), CompareSALT(&test_salt), CompareKI(&test_ki), false))
+        EXPECT_CALL(mocks, MKA_PHY_AddRxSA(MKA_BUS,test_AN, test_lowestPN, test_ssci, CompareSAK(&test_sak), CompareHASH(&test_hash), CompareSALT(&test_salt), CompareKI(&test_ki), false))
             .WillOnce(Return(MKA_OK));
         
         t_MKA_receive_sa* sa_pointer = MKA_SECY_CreateReceiveSA(MKA_BUS, test_AN, test_lowestPN, test_ssci, key_pointer);
