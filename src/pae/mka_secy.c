@@ -431,7 +431,7 @@ t_MKA_transmit_sa* MKA_SECY_CreateTransmitSA(t_MKA_bus bus, uint8_t an, t_MKA_pn
                 ctx->tx_sa[idx].data_key = sak;
                 ctx->tx_sa[idx].enable_transmit = false;
                 /* Set PHY TX SA configuration */
-                if(MKA_OK == cfg->impl.phy_driver.AddTxSA(bus, an, next_pn, 0U, &data_key->SAK, &data_key->HASH, &data_key->SALT, &data_key->key_identifier, false)) {
+                if(MKA_OK == cfg->impl.phy_driver.AddTxSA(bus, an, next_pn, ssci, &data_key->SAK, &data_key->HASH, &data_key->SALT, &data_key->key_identifier, false)) {
                     /* Save initial timestamps */
                     timestamp = mka_tick_time_ms;
                     ctx->tx_sa[idx].created_time = timestamp;
@@ -509,7 +509,7 @@ t_MKA_receive_sa* MKA_SECY_CreateReceiveSA(t_MKA_bus bus, uint8_t an, t_MKA_pn l
                 ctx->rx_sa[idx].data_key = sak;
                 ctx->rx_sa[idx].enable_receive = false;
                 /* Set PHY RX SA configuration */
-                if(MKA_OK == cfg->impl.phy_driver.AddRxSA(bus, an, lowest_pn, 0U, &data_key->SAK, &data_key->HASH, &data_key->SALT, &data_key->key_identifier, false)) {
+                if(MKA_OK == cfg->impl.phy_driver.AddRxSA(bus, an, lowest_pn, ssci, &data_key->SAK, &data_key->HASH, &data_key->SALT, &data_key->key_identifier, false)) {
                     /* Save initial timestamps */
                     timestamp = mka_tick_time_ms;
                     ctx->rx_sa[idx].created_time = timestamp;
