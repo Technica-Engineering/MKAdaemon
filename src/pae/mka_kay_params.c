@@ -443,6 +443,7 @@ bool mka_encode_peer_list(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
     //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
     t_mka_peer_id *const param_peer = (t_mka_peer_id*)&packet[(*length) + sizeof(t_mka_param_peer_list)];
     bool const present = (MKA_PEER_NONE != peer->state);
+    bool const dist_sak_present_xpn = mka_is_cipher_xpn(participant->cipher) && (MKA_SAK_KS_DISTRIBUTING == participant->sak_state);
     bool continue_process = true;
 
     // Case it's not necessary to include this parameter
@@ -458,10 +459,14 @@ bool mka_encode_peer_list(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
         memset(param, 0, sizeof(t_mka_param_peer_list));
         param->type = (MKA_PEER_POTENTIAL == peer->state) ?
             PARAMETER_POTENTIAL_PEER_LIST : PARAMETER_LIVE_PEER_LIST;
-        param->key_server_ssci = 0U; // TODO
+        param->key_server_ssci = 0U;
         param->unused = 0U;
         param->length = 0U;
         param->length_cont = 16U;
+
+        if ((MKA_PEER_LIVE == peer->state) && dist_sak_present_xpn) {
+            param->key_server_ssci = (peer->ssci == SSCI_FIRST) ? (uint8_t)SSCI_SECOND : (uint8_t)SSCI_FIRST;
+        }
 
         memcpy(param_peer->mi, peer->mi, sizeof(peer->mi));
         param_peer->mn = MKA_HTONL(peer->mn);
