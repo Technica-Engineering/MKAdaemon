@@ -37,6 +37,7 @@
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <linux/if_link.h>
+#include <pthread.h>
 
 #define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
@@ -45,6 +46,9 @@
 #define MAC_ADDR_LEN 6
 #define MI_LEN			12
 #define UNUSED_SCI 0xffffffffffffffff
+
+// 500 ms
+#define TXSC_CACHE_EXPIRATION_NS 500000000
 
 typedef u16 __bitwise be16;
 
@@ -60,18 +64,16 @@ typedef struct {
 	t_MKA_stats_receive_sc stats_rx_sc;
 } t_libnl_stats;
 
-struct cb_arg {
-	t_MKA_bus bus;
-	t_libnl_cb_function function;
-	t_libnl_stats *stats;
-	t_MKA_pn *pn;
-	int ifindex;
-	u8 txsa;
-	u8 rxsa;
-	u64 rxsci;
+// Information returned by get_txsc_info for each bus. This will be cached.
+struct t_get_txsc_info {
+	t_libnl_stats stats;
+	t_MKA_pn txpn;
+	t_MKA_pn rxpn;
 };
 
-
+// Cache
+struct timespec txsc_info_cache_timestamp;
+pthread_mutex_t txsc_info_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Data for each bus
 typedef struct {
@@ -80,7 +82,7 @@ typedef struct {
     struct nl_sock *genl_sk;
     int macsec_genl_id;
     bool init_done;
-	int ifi;
+	uint32_t ifi;
 	int parent_ifi;
 	bool created_link;
 	struct rtnl_link *link;
@@ -98,7 +100,7 @@ typedef struct {
 #ifdef CONFIG_MACSEC_XPN_SUPPORT
 	bool xpn;
 #endif // CONFIG_MACSEC_XPN_SUPPORT
-	struct cb_arg cb_arg;
+	struct t_get_txsc_info txsc_info_cache_data;
 } t_MKA_libnl_status;
 
 #ifdef CONFIG_MACSEC_XPN_SUPPORT
@@ -134,20 +136,11 @@ static int dump_callback(struct nl_msg *msg, void *argp)
 {
 	struct nlmsghdr *ret_hdr = nlmsg_hdr(msg);
 	struct nlattr *tb_msg[MACSEC_ATTR_MAX + 1];
-	struct cb_arg *arg = (struct cb_arg *) argp;
 	struct genlmsghdr *gnlh = (struct genlmsghdr *) nlmsg_data(ret_hdr);
 	int err;
 	struct nlattr *nla;
 	int rem;
-
-	t_MKA_bus bus = arg->bus;
-	t_MKA_libnl_status *my_libnl_status = &libnl_status[bus];
-
-
-	if (ret_hdr->nlmsg_type != my_libnl_status->macsec_genl_id){
-		return 0;
-	}
-		
+	struct t_get_txsc_info *txsc_info_cache_data;
 
 	err = nla_parse(tb_msg, MACSEC_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
 			genlmsg_attrlen(gnlh, 0), main_policy);
@@ -159,146 +152,153 @@ static int dump_callback(struct nl_msg *msg, void *argp)
 		return 0;
 	}
 
-	if (nla_get_u32(tb_msg[MACSEC_ATTR_IFINDEX]) != (u32) arg->ifindex){
+	// Look for the relevant interface in the list of active buses
+	t_MKA_libnl_status *this_libnl_status = NULL;
+	for (uint32_t i=0;i<MKA_NUM_BUSES;i++){
+		if (libnl_status[i].ifi == nla_get_u32(tb_msg[MACSEC_ATTR_IFINDEX])){
+			this_libnl_status = &libnl_status[i];
+		}
+	}
+	if (this_libnl_status == NULL){
 		return 0;
 	}
+	if (ret_hdr->nlmsg_type != this_libnl_status->macsec_genl_id){
+		return 0;
+	}
+	txsc_info_cache_data = &this_libnl_status->txsc_info_cache_data;
+	// Zeroize the struct to make sure no old values are left from previous iterations if we now don't receive them.
+	memset(txsc_info_cache_data, 0, sizeof(struct t_get_txsc_info));
 
-	if (arg->function == CB_GET_PN){
-		if (arg->txsa < 4 && !tb_msg[MACSEC_ATTR_TXSA_LIST]) {
-			return 0;
-		} else if (arg->txsa < 4) {
-			
-			nla_for_each_nested(nla, tb_msg[MACSEC_ATTR_TXSA_LIST], rem) {
-				struct nlattr *tb[MACSEC_SA_ATTR_MAX + 1];
+	// Get TX PN
+	if (tb_msg[MACSEC_ATTR_TXSA_LIST]) {
+		nla_for_each_nested(nla, tb_msg[MACSEC_ATTR_TXSA_LIST], rem) {
+			struct nlattr *tb[MACSEC_SA_ATTR_MAX + 1];
 
-				err = nla_parse_nested(tb, MACSEC_SA_ATTR_MAX, nla,
+			err = nla_parse_nested(tb, MACSEC_SA_ATTR_MAX, nla,
+						sa_policy);
+			if (err < 0){
+				continue;
+			} if (!tb[MACSEC_SA_ATTR_AN]){
+				continue;
+			} if (!tb[MACSEC_SA_ATTR_PN]){
+				continue;
+			}
+#ifdef CONFIG_MACSEC_XPN_SUPPORT
+			if (this_libnl_status->xpn) {
+				txsc_info_cache_data->txpn = nla_get_u64(tb[MACSEC_SA_ATTR_PN]);
+			} else
+#endif // CONFIG_MACSEC_XPN_SUPPORT
+			{
+				txsc_info_cache_data->txpn = nla_get_u32(tb[MACSEC_SA_ATTR_PN]);
+			}
+		}
+	}
+
+	// Get RX PN
+	if (tb_msg[MACSEC_ATTR_RXSC_LIST]) {
+		nla_for_each_nested(nla, tb_msg[MACSEC_ATTR_RXSC_LIST], rem) {
+			struct nlattr *tb[MACSEC_RXSC_ATTR_MAX + 1];
+
+			err = nla_parse_nested(tb, MACSEC_RXSC_ATTR_MAX, nla,
+						sc_policy);
+			if (err < 0){
+				continue;
+			}
+			if (!tb[MACSEC_RXSC_ATTR_SCI]){
+				continue;
+			}
+			if (!tb[MACSEC_RXSC_ATTR_SA_LIST]){
+				continue;
+			}
+
+			nla_for_each_nested(nla, tb[MACSEC_RXSC_ATTR_SA_LIST],
+						rem) {
+				struct nlattr *tb_sa[MACSEC_SA_ATTR_MAX + 1];
+
+				err = nla_parse_nested(tb_sa,
+							MACSEC_SA_ATTR_MAX, nla,
 							sa_policy);
 				if (err < 0){
 					continue;
-				} if (!tb[MACSEC_SA_ATTR_AN]){
-					continue;
-				} if (nla_get_u8(tb[MACSEC_SA_ATTR_AN]) != arg->txsa){
-					continue;
-				} if (!tb[MACSEC_SA_ATTR_PN]){
-					return 0;
 				}
-#ifdef CONFIG_MACSEC_XPN_SUPPORT
-				if (my_libnl_status->xpn) {
-					*arg->pn = nla_get_u64(tb[MACSEC_SA_ATTR_PN]);
+				if (!tb_sa[MACSEC_SA_ATTR_AN]){
+					continue;
+				}
+				if (!tb_sa[MACSEC_SA_ATTR_PN]){
+					continue;
+				}
+	#ifdef CONFIG_MACSEC_XPN_SUPPORT
+				if (this_libnl_status->xpn) {
+					txsc_info_cache_data->rxpn = nla_get_u64(tb_sa[MACSEC_SA_ATTR_PN]);
 				} else
-#endif // CONFIG_MACSEC_XPN_SUPPORT
+	#endif // CONFIG_MACSEC_XPN_SUPPORT
 				{
-					*arg->pn = nla_get_u32(tb[MACSEC_SA_ATTR_PN]);
+					txsc_info_cache_data->rxpn = nla_get_u32(tb_sa[MACSEC_SA_ATTR_PN]);
 				}
-				return 0;
+
 			}
-
-			return 0;
 		}
+	}
+	// Get stats
 
-		if (arg->rxsci == UNUSED_SCI){
-			return 0;
+	if (tb_msg[MACSEC_ATTR_SECY_STATS]) {
+		struct nlattr *tb[MACSEC_SECY_STATS_ATTR_MAX + 1];
+		err = nla_parse_nested(tb, MACSEC_SECY_STATS_ATTR_MAX, tb_msg[MACSEC_ATTR_SECY_STATS],
+					NULL);
+		if (err == 0){
+			txsc_info_cache_data->stats.stats_tx_secy.out_pkts_untagged = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_OUT_PKTS_UNTAGGED]);
+			txsc_info_cache_data->stats.stats_rx_secy.in_pkts_untagged = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_UNTAGGED]);
+			txsc_info_cache_data->stats.stats_tx_secy.out_pkts_too_long = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_OUT_PKTS_TOO_LONG]);
+			txsc_info_cache_data->stats.stats_rx_secy.in_pkts_no_tag = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_NO_TAG]);
+			txsc_info_cache_data->stats.stats_rx_secy.in_pkts_bad_tag = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_BAD_TAG]);
+			txsc_info_cache_data->stats.stats_rx_secy.in_pkts_no_sa = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_UNKNOWN_SCI]);
+			txsc_info_cache_data->stats.stats_rx_secy.in_pkts_no_sa_error = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_NO_SCI]);
+			txsc_info_cache_data->stats.stats_rx_secy.in_pkts_overrun = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_OVERRUN]);
 		}
-
-		if (tb_msg[MACSEC_ATTR_RXSC_LIST]) {
-			nla_for_each_nested(nla, tb_msg[MACSEC_ATTR_RXSC_LIST], rem) {
-				struct nlattr *tb[MACSEC_RXSC_ATTR_MAX + 1];
-
-				err = nla_parse_nested(tb, MACSEC_RXSC_ATTR_MAX, nla,
-							sc_policy);
-				if (err < 0)
-					return 0;
-				if (!tb[MACSEC_RXSC_ATTR_SCI])
-					continue;
-				if (nla_get_u64(tb[MACSEC_RXSC_ATTR_SCI]) != arg->rxsci)
-					continue;
-				if (!tb[MACSEC_RXSC_ATTR_SA_LIST])
-					return 0;
-
-				nla_for_each_nested(nla, tb[MACSEC_RXSC_ATTR_SA_LIST],
-							rem) {
-					struct nlattr *tb_sa[MACSEC_SA_ATTR_MAX + 1];
-
-					err = nla_parse_nested(tb_sa,
-								MACSEC_SA_ATTR_MAX, nla,
-								sa_policy);
-					if (err < 0)
-						continue;
-					if (!tb_sa[MACSEC_SA_ATTR_AN])
-						continue;
-					if (nla_get_u8(tb_sa[MACSEC_SA_ATTR_AN]) !=
-						arg->rxsa)
-						continue;
-					if (!tb_sa[MACSEC_SA_ATTR_PN])
-						return 0;
-#ifdef CONFIG_MACSEC_XPN_SUPPORT
-				if (my_libnl_status->xpn) {
-					*arg->pn = nla_get_u64(tb_sa[MACSEC_SA_ATTR_PN]);
-				} else
-#endif // CONFIG_MACSEC_XPN_SUPPORT
-				{
-					*arg->pn = nla_get_u32(tb_sa[MACSEC_SA_ATTR_PN]);
-				}
-
-					return 0;
-				}
-
-				return 0;
-			}
-
-			return 0;
+	}
+	if (tb_msg[MACSEC_ATTR_TXSC_STATS]){
+		struct nlattr *tb[MACSEC_TXSC_STATS_ATTR_MAX + 1];
+		err = nla_parse_nested(tb, MACSEC_TXSC_STATS_ATTR_MAX, tb_msg[MACSEC_ATTR_TXSC_STATS],
+					NULL);
+		if (err == 0){
+			txsc_info_cache_data->stats.stats_tx_sc.out_pkts_protected = nla_get_u64(tb[MACSEC_TXSC_STATS_ATTR_OUT_PKTS_PROTECTED]);
+			txsc_info_cache_data->stats.stats_tx_sc.out_pkts_encrypted = nla_get_u64(tb[MACSEC_TXSC_STATS_ATTR_OUT_PKTS_ENCRYPTED]);
+			txsc_info_cache_data->stats.stats_tx_secy.out_octets_protected = nla_get_u64(tb[MACSEC_TXSC_STATS_ATTR_OUT_OCTETS_PROTECTED]);
+			txsc_info_cache_data->stats.stats_tx_secy.out_octets_encrypted = nla_get_u64(tb[MACSEC_TXSC_STATS_ATTR_OUT_OCTETS_ENCRYPTED]);
 		}
-	} else if (arg->function == CB_GET_STATS){
-		if (tb_msg[MACSEC_ATTR_SECY_STATS]) {
-			struct nlattr *tb[MACSEC_SECY_STATS_ATTR_MAX + 1];
-			err = nla_parse_nested(tb, MACSEC_SECY_STATS_ATTR_MAX, tb_msg[MACSEC_ATTR_SECY_STATS],
+	}
+	if (tb_msg[MACSEC_ATTR_RXSC_LIST]){
+		struct nlattr *tb2[MACSEC_SECY_STATS_ATTR_MAX + 1];
+		nla_for_each_nested(nla, tb_msg[MACSEC_ATTR_RXSC_LIST], rem) {
+			struct nlattr *tb[MACSEC_RXSC_ATTR_MAX + 1];
+
+			err = nla_parse_nested(tb, MACSEC_RXSC_ATTR_MAX, nla,
 						NULL);
 			if (err == 0){
-				arg->stats->stats_tx_secy.out_pkts_untagged = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_OUT_PKTS_UNTAGGED]);
-				arg->stats->stats_rx_secy.in_pkts_untagged = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_UNTAGGED]);
-				arg->stats->stats_tx_secy.out_pkts_too_long = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_OUT_PKTS_TOO_LONG]);
-				arg->stats->stats_rx_secy.in_pkts_no_tag = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_NO_TAG]);
-				arg->stats->stats_rx_secy.in_pkts_bad_tag = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_BAD_TAG]);
-				arg->stats->stats_rx_secy.in_pkts_no_sa = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_UNKNOWN_SCI]);
-				arg->stats->stats_rx_secy.in_pkts_no_sa_error = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_NO_SCI]);
-				arg->stats->stats_rx_secy.in_pkts_overrun = nla_get_u64(tb[MACSEC_SECY_STATS_ATTR_IN_PKTS_OVERRUN]);
-			}
-		}
-		if (tb_msg[MACSEC_ATTR_TXSC_STATS]){
-			struct nlattr *tb[MACSEC_TXSC_STATS_ATTR_MAX + 1];
-			err = nla_parse_nested(tb, MACSEC_TXSC_STATS_ATTR_MAX, tb_msg[MACSEC_ATTR_TXSC_STATS],
-						NULL);
-			if (err == 0){
-				arg->stats->stats_tx_sc.out_pkts_protected = nla_get_u64(tb[MACSEC_TXSC_STATS_ATTR_OUT_PKTS_PROTECTED]);
-				arg->stats->stats_tx_sc.out_pkts_encrypted = nla_get_u64(tb[MACSEC_TXSC_STATS_ATTR_OUT_PKTS_ENCRYPTED]);
-				arg->stats->stats_tx_secy.out_octets_protected = nla_get_u64(tb[MACSEC_TXSC_STATS_ATTR_OUT_OCTETS_PROTECTED]);
-				arg->stats->stats_tx_secy.out_octets_encrypted = nla_get_u64(tb[MACSEC_TXSC_STATS_ATTR_OUT_OCTETS_ENCRYPTED]);
-			}
-		}
-		if (tb_msg[MACSEC_ATTR_RXSC_LIST]){
-			struct nlattr *tb2[MACSEC_SECY_STATS_ATTR_MAX + 1];
-			nla_for_each_nested(nla, tb_msg[MACSEC_ATTR_RXSC_LIST], rem) {
-				struct nlattr *tb[MACSEC_RXSC_ATTR_MAX + 1];
-
-				err = nla_parse_nested(tb, MACSEC_RXSC_ATTR_MAX, nla,
-							NULL);
+				err = nla_parse_nested(tb2, MACSEC_RXSC_ATTR_MAX, tb[MACSEC_RXSC_ATTR_STATS],NULL);
 				if (err == 0){
-					err = nla_parse_nested(tb2, MACSEC_RXSC_ATTR_MAX, tb[MACSEC_RXSC_ATTR_STATS],NULL);
-					if (err == 0){
-						arg->stats->stats_rx_secy.in_octets_validated = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_VALIDATED]);
-						arg->stats->stats_rx_secy.in_octets_decrypted = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_DECRYPTED]);
-						arg->stats->stats_rx_sc.in_pkts_unchecked = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_UNCHECKED]);
-						arg->stats->stats_rx_sc.in_pkts_delayed = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_DELAYED]);
-						arg->stats->stats_rx_sc.in_pkts_ok = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_OK]);
-						arg->stats->stats_rx_sc.in_pkts_invalid = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_INVALID]);
-						arg->stats->stats_rx_sc.in_pkts_late = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_LATE]);
-						arg->stats->stats_rx_sc.in_pkts_not_valid = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_NOT_VALID]);
-					}
+					txsc_info_cache_data->stats.stats_rx_secy.in_octets_validated = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_VALIDATED]);
+					txsc_info_cache_data->stats.stats_rx_secy.in_octets_decrypted = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_DECRYPTED]);
+					txsc_info_cache_data->stats.stats_rx_sc.in_pkts_unchecked = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_UNCHECKED]);
+					txsc_info_cache_data->stats.stats_rx_sc.in_pkts_delayed = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_DELAYED]);
+					txsc_info_cache_data->stats.stats_rx_sc.in_pkts_ok = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_OK]);
+					txsc_info_cache_data->stats.stats_rx_sc.in_pkts_invalid = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_INVALID]);
+					txsc_info_cache_data->stats.stats_rx_sc.in_pkts_late = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_LATE]);
+					txsc_info_cache_data->stats.stats_rx_sc.in_pkts_not_valid = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_NOT_VALID]);
 				}
 			}
 		}
 	}
+
 	return 0;
+}
+
+static void txsc_cache_invalidate(){
+	MKA_LOG_DEBUG2("Invalidating TxSC Cache");
+	pthread_mutex_lock(&txsc_info_cache_mutex);
+	txsc_info_cache_timestamp.tv_sec = 0;
+	txsc_info_cache_timestamp.tv_nsec = 0;
+	pthread_mutex_unlock(&txsc_info_cache_mutex);
 }
 
 // Initialize the connection. This function is called only once, at the beginning.
@@ -306,6 +306,8 @@ t_MKA_result libnl_init()
 {
   for (unsigned int i=0;i<MKA_NUM_BUSES;i++){
     libnl_status->init_done = false;
+	txsc_info_cache_timestamp.tv_sec = 0;
+	txsc_info_cache_timestamp.tv_nsec = 0;
   }
   return MKA_OK;
 }
@@ -349,11 +351,7 @@ static t_MKA_result libnl_per_bus_init(t_MKA_bus bus){
 		return MKA_NOT_OK;
 	}
 
-	memset(&my_libnl_status->cb_arg, 0, sizeof(my_libnl_status->cb_arg));
-	my_libnl_status->cb_arg.bus = bus;
-
-	nl_socket_modify_cb(my_libnl_status->genl_sk, NL_CB_VALID, NL_CB_CUSTOM, dump_callback,
-					&my_libnl_status->cb_arg);
+	nl_socket_modify_cb(my_libnl_status->genl_sk, NL_CB_VALID, NL_CB_CUSTOM, dump_callback,NULL);
 
 
   return MKA_OK;
@@ -843,6 +841,7 @@ t_MKA_result MKA_PHY_InitRxSC(t_MKA_bus bus, t_MKA_sci const * sci)
 		MKA_LOG_ERROR("failed to communicate: %d (%s)",
 				ret, nl_geterror(-ret));
 	}
+	txsc_cache_invalidate();
 
 	memcpy(&my_libnl_status->rx_sci, sci, sizeof(t_MKA_sci));
 
@@ -871,6 +870,7 @@ t_MKA_result MKA_PHY_DeinitRxSC(t_MKA_bus bus, t_MKA_sci const * sci)
 		MKA_LOG_ERROR("failed to communicate: %d (%s)",
 			   ret, nl_geterror(-ret));
 	}
+	txsc_cache_invalidate();
 
 nla_put_failure:
 	nlmsg_free(msg);
@@ -924,6 +924,7 @@ t_MKA_result MKA_PHY_AddTxSA(t_MKA_bus bus, uint8_t an, t_MKA_pn next_pn, t_MKA_
 		MKA_LOG_ERROR("failed to communicate: %d (%s)",
 			   ret, nl_geterror(-ret));
 	}
+	txsc_cache_invalidate();
 
 nla_put_failure:
 	nlmsg_free(msg);
@@ -971,6 +972,7 @@ t_MKA_result MKA_PHY_UpdateTxSA(t_MKA_bus bus, uint8_t an, t_MKA_pn next_pn, boo
 	} else {
 		MKA_LOG_DEBUG1("Link modified OK");
 	}
+	txsc_cache_invalidate();
 
 
 nla_put_failure:
@@ -1029,6 +1031,7 @@ t_MKA_result MKA_PHY_DeleteTxSA(t_MKA_bus bus, uint8_t an)
 		MKA_LOG_ERROR("failed to communicate: %d (%s)",
 			   ret, nl_geterror(-ret));
 	}
+	txsc_cache_invalidate();
 
 nla_put_failure:
 	nlmsg_free(msg);
@@ -1084,6 +1087,7 @@ t_MKA_result MKA_PHY_AddRxSA(t_MKA_bus bus, uint8_t an, t_MKA_pn next_pn, t_MKA_
 		MKA_LOG_ERROR("failed to communicate: %d (%s)",
 			   ret, nl_geterror(-ret));
 	}
+	txsc_cache_invalidate();
 
 nla_put_failure:
 	nlmsg_free(msg);
@@ -1233,6 +1237,7 @@ t_MKA_result MKA_PHY_DeleteRxSA(t_MKA_bus bus, uint8_t an)
 		MKA_LOG_ERROR("failed to communicate: %d (%s)",
 			   ret, nl_geterror(-ret));
 	}
+	txsc_cache_invalidate();
 
 nla_put_failure:
 	nlmsg_free(msg);
@@ -1240,54 +1245,49 @@ nla_put_failure:
 	else return MKA_NOT_OK;
 }
 
-static t_MKA_result do_dump_get_stats(t_MKA_bus bus, t_libnl_stats *stats){
-	t_MKA_libnl_status *my_libnl_status = &libnl_status[bus];
-	struct nl_msg *msg;
-	int ret = 1;
 
-	my_libnl_status->cb_arg.ifindex = my_libnl_status->ifi;
-	my_libnl_status->cb_arg.function = CB_GET_STATS;
-	my_libnl_status->cb_arg.stats = stats;
 
-	msg = nlmsg_alloc();
-	if (!msg) {
-		MKA_LOG_ERROR("%s: failed to alloc message",
-			   __func__);
-		return MKA_NOT_OK;
+static t_MKA_result txsc_cache_is_hit(){
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC,&now);
+	bool cache_miss = false;
+	if (now.tv_sec - txsc_info_cache_timestamp.tv_sec > 1){
+		MKA_LOG_DEBUG3("More than 1 second elapsed, cache MISS\n");
+		cache_miss = true;
+	} else if (now.tv_sec - txsc_info_cache_timestamp.tv_sec == 1){
+		if ((now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec  > TXSC_CACHE_EXPIRATION_NS){
+			MKA_LOG_DEBUG3(" Elapsed %d ns > %d, cache MISS", (now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec,TXSC_CACHE_EXPIRATION_NS);
+			cache_miss = true;
+		} else {
+			MKA_LOG_DEBUG3(" Elapsed %d ns < %d, cache HIT", (now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec,TXSC_CACHE_EXPIRATION_NS);
+		}
+	} else {
+		if (now.tv_nsec - txsc_info_cache_timestamp.tv_nsec > TXSC_CACHE_EXPIRATION_NS){
+			MKA_LOG_DEBUG3(" Elapsed %d ns > %d, cache MISS", now.tv_nsec - txsc_info_cache_timestamp.tv_nsec, TXSC_CACHE_EXPIRATION_NS);
+			cache_miss = true;
+		} else {
+			MKA_LOG_DEBUG3(" Elapsed %d ns < %d, cache HIT", now.tv_nsec - txsc_info_cache_timestamp.tv_nsec, TXSC_CACHE_EXPIRATION_NS);
+		}
 	}
 
-	if (!genlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, my_libnl_status->macsec_genl_id, 0,
-			 NLM_F_DUMP, MACSEC_CMD_GET_TXSC, 0)) {
-		MKA_LOG_ERROR("%s: failed to put header",
-			   __func__);
-		goto out_free_msg;
-	}
-
-	ret = nl_send_recv(my_libnl_status->genl_sk, msg);
-	if (ret < 0)
-		MKA_LOG_ERROR("failed to communicate: %d (%s)",
-			   ret, nl_geterror(-ret));
-
-	my_libnl_status->cb_arg.stats = NULL;
-
-out_free_msg:
-	nlmsg_free(msg);
-	if (ret == 0) return MKA_OK;
-	else return MKA_NOT_OK;
+	if (cache_miss == true) return false; // Cache miss
+	else return true; // Cache hit	
 }
 
-static t_MKA_result do_dump_get_pn(t_MKA_bus bus, u8 txsa, u64 rxsci, u8 rxsa, t_MKA_pn *pn)
-{
-	t_MKA_libnl_status *my_libnl_status = &libnl_status[bus];
+// This function will update the txsc_info_cache_data structure inside the t_MKA_libnl_status structure of
+// each bus, only if the cache time is expired.
+static t_MKA_result txsc_cache_update(t_MKA_bus bus){
 	struct nl_msg *msg;
+	t_MKA_libnl_status *my_libnl_status = &libnl_status[bus];
 	int ret = 1;
+	pthread_mutex_lock(&txsc_info_cache_mutex);
 
-	my_libnl_status->cb_arg.ifindex = my_libnl_status->ifi;
-	my_libnl_status->cb_arg.function = CB_GET_PN;
-	my_libnl_status->cb_arg.rxsci = rxsci;
-	my_libnl_status->cb_arg.rxsa = rxsa;
-	my_libnl_status->cb_arg.txsa = txsa;
-	my_libnl_status->cb_arg.pn = pn;
+	if (txsc_cache_is_hit()) {
+		pthread_mutex_unlock(&txsc_info_cache_mutex);
+		return MKA_OK;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC,&txsc_info_cache_timestamp);
 
 	msg = nlmsg_alloc();
 	if (!msg) {
@@ -1308,10 +1308,9 @@ static t_MKA_result do_dump_get_pn(t_MKA_bus bus, u8 txsa, u64 rxsci, u8 rxsa, t
 		MKA_LOG_ERROR("failed to communicate: %d (%s)",
 			   ret, nl_geterror(-ret));
 
-	my_libnl_status->cb_arg.pn = NULL;
-
 out_free_msg:
 	nlmsg_free(msg);
+	pthread_mutex_unlock(&txsc_info_cache_mutex);
 	if (ret == 0) return MKA_OK;
 	else return MKA_NOT_OK;
 }
@@ -1319,9 +1318,16 @@ out_free_msg:
 t_MKA_result MKA_PHY_GetTxSANextPN(t_MKA_bus bus, uint8_t an, t_MKA_pn* next_pn)
 {
 	t_MKA_result err;
+	t_MKA_libnl_status *my_libnl_status = &libnl_status[bus];
+	if (!my_libnl_status->init_done){
+		return MKA_OK;
+	}
 	MKA_LOG_DEBUG1("Libnl adapter: MKA_PHY_GetTxSANextPN");
 
-	err = do_dump_get_pn(bus, an, UNUSED_SCI, 0xff, next_pn);
+	err = txsc_cache_update(bus);
+	pthread_mutex_lock(&txsc_info_cache_mutex);
+	*next_pn = my_libnl_status->txsc_info_cache_data.txpn;
+	pthread_mutex_unlock(&txsc_info_cache_mutex);
 	MKA_LOG_DEBUG1("%s: err %d result %d", __func__, err,
 		   *next_pn);
 	return err;
@@ -1330,47 +1336,47 @@ t_MKA_result MKA_PHY_GetTxSANextPN(t_MKA_bus bus, uint8_t an, t_MKA_pn* next_pn)
 t_MKA_result MKA_PHY_GetMacSecStats(t_MKA_bus bus, t_MKA_stats_transmit_secy * stats_tx_secy, t_MKA_stats_receive_secy * stats_rx_secy,
                                     t_MKA_stats_transmit_sc * stats_tx_sc, t_MKA_stats_receive_sc * stats_rx_sc)
 {
+	t_MKA_result err;
 	t_MKA_libnl_status *my_libnl_status = &libnl_status[bus];
 	if (!my_libnl_status->init_done){
 		return MKA_OK;
 	}
-	t_libnl_stats stats = {0};
-	if (do_dump_get_stats(bus, &stats) != MKA_OK){
-		MKA_LOG_ERROR("Could not ask for stats");
-		return MKA_NOT_OK;
+
+	err = txsc_cache_update(bus);
+
+	if (err == MKA_OK){
+		pthread_mutex_lock(&txsc_info_cache_mutex);
+		memcpy(stats_tx_secy, &my_libnl_status->txsc_info_cache_data.stats.stats_tx_secy, sizeof(t_MKA_stats_transmit_secy));
+		memcpy(stats_rx_secy, &my_libnl_status->txsc_info_cache_data.stats.stats_rx_secy, sizeof(t_MKA_stats_receive_secy));
+		memcpy(stats_tx_sc, &my_libnl_status->txsc_info_cache_data.stats.stats_tx_sc, sizeof(t_MKA_stats_receive_secy));
+		memcpy(stats_rx_sc, &my_libnl_status->txsc_info_cache_data.stats.stats_rx_sc, sizeof(t_MKA_stats_receive_sc));
+		pthread_mutex_unlock(&txsc_info_cache_mutex);
+	
+		// These are in: u64 per-SecY stats - macsec_secy_stats_attr
+		MKA_LOG_DEBUG2("Packets out untagged  : %u",stats_tx_secy->out_pkts_untagged);
+		MKA_LOG_DEBUG2("Packets out too long  : %u",stats_tx_secy->out_pkts_too_long);
+		MKA_LOG_DEBUG2("Packets in untagged   : %u",stats_rx_secy->in_pkts_untagged); // Packets without tag, accepted because validateFrames != Strict
+		MKA_LOG_DEBUG2("Packets in no tag     : %u",stats_rx_secy->in_pkts_no_tag); // Packets without tag, discarded because validateFrames == Strict
+		MKA_LOG_DEBUG2("Packets in bad tag    : %u",stats_rx_secy->in_pkts_bad_tag); // Packets with a bad tag, discarded
+		MKA_LOG_DEBUG2("Packets in No SA      : %u",stats_rx_secy->in_pkts_no_sa); // Packets with no SA, accepted because validateFrames != Strict
+		MKA_LOG_DEBUG2("Packets in No SA Error: %u",stats_rx_secy->in_pkts_no_sa_error); // Packets with no SA, discarded because validateFrames == Strict
+		MKA_LOG_DEBUG2("Packets in Overrun    : %u",stats_rx_secy->in_pkts_overrun); // Packets discarded because of validation/decryption performance limit reached
+
+		// These are in: u64 per-TXSC stats - macsec_txsc_stats_attr
+		MKA_LOG_DEBUG2("Octets out encrypted  : %u", stats_tx_secy->out_octets_encrypted);
+		MKA_LOG_DEBUG2("Octets out protected  : %u", stats_tx_secy->out_octets_protected);
+		MKA_LOG_DEBUG2("Packets out encrypted : %u",stats_tx_sc->out_pkts_encrypted);
+		MKA_LOG_DEBUG2("Packets out protected : %u",stats_tx_sc->out_pkts_protected);
+
+		// These are in: u64 per-RXSC stats  - macsec_rxsc_stats_attr
+		MKA_LOG_DEBUG2("Octets in validated   : %ld",stats_rx_secy->in_octets_validated);
+		MKA_LOG_DEBUG2("Octets in decrypted   : %u",stats_rx_secy->in_octets_decrypted);
+		MKA_LOG_DEBUG2("Packets in OK         : %u",stats_rx_sc->in_pkts_ok); // Packets which passed all checks
+		MKA_LOG_DEBUG2("Packets in unchecked  : %u",stats_rx_sc->in_pkts_unchecked); // Packets with invalid macsec frame, accepted because validateFrames == Disabled
+		MKA_LOG_DEBUG2("Packets in delayed    : %u",stats_rx_sc->in_pkts_delayed); // Packets with pn < minimum, accepted because replay protect is inactive
+		MKA_LOG_DEBUG2("Packets in late       : %u",stats_rx_sc->in_pkts_late); // Packets with pn < minimum, discarded because replay protect is active
+		MKA_LOG_DEBUG2("Packets in invalid    : %u",stats_rx_sc->in_pkts_invalid); // Packets with invalid macsec frame, accepted because validateFrames == Check
+		MKA_LOG_DEBUG2("Packets in not valid  : %u",stats_rx_sc->in_pkts_not_valid); // Packets with invalid macsec frame, discarded because validateFrames == Strict
 	}
-
-	memcpy(stats_tx_secy, &stats.stats_tx_secy, sizeof(t_MKA_stats_transmit_secy));
-	memcpy(stats_rx_secy, &stats.stats_rx_secy, sizeof(t_MKA_stats_receive_secy));
-	memcpy(stats_tx_sc, &stats.stats_tx_sc, sizeof(t_MKA_stats_receive_secy));
-	memcpy(stats_rx_sc, &stats.stats_rx_sc, sizeof(t_MKA_stats_receive_sc));
-
-/*
-	// These are in: u64 per-SecY stats - macsec_secy_stats_attr
-	MKA_LOG_DEBUG2("Packets out untagged  : %u",stats_tx_secy->out_pkts_untagged);
-	MKA_LOG_DEBUG2("Packets out too long  : %u",stats_tx_secy->out_pkts_too_long);
-	MKA_LOG_DEBUG2("Packets in untagged   : %u",stats_rx_secy->in_pkts_untagged); // Packets without tag, accepted because validateFrames != Strict
-	MKA_LOG_DEBUG2("Packets in no tag     : %u",stats_rx_secy->in_pkts_no_tag); // Packets without tag, discarded because validateFrames == Strict
-	MKA_LOG_DEBUG2("Packets in bad tag    : %u",stats_rx_secy->in_pkts_bad_tag); // Packets with a bad tag, discarded
-	MKA_LOG_DEBUG2("Packets in No SA      : %u",stats_rx_secy->in_pkts_no_sa); // Packets with no SA, accepted because validateFrames != Strict
-	MKA_LOG_DEBUG2("Packets in No SA Error: %u",stats_rx_secy->in_pkts_no_sa_error); // Packets with no SA, discarded because validateFrames == Strict
-	MKA_LOG_DEBUG2("Packets in Overrun    : %u",stats_rx_secy->in_pkts_overrun); // Packets discarded because of validation/decryption performance limit reached
-
-	// These are in: u64 per-TXSC stats - macsec_txsc_stats_attr
-	MKA_LOG_DEBUG2("Octets out encrypted  : %u", stats_tx_secy->out_octets_encrypted);
-	MKA_LOG_DEBUG2("Octets out protected  : %u", stats_tx_secy->out_octets_protected);
-	MKA_LOG_DEBUG2("Packets out encrypted : %u",stats_tx_sc->out_pkts_encrypted);
-	MKA_LOG_DEBUG2("Packets out protected : %u",stats_tx_sc->out_pkts_protected);
-
-	// These are in: u64 per-RXSC stats  - macsec_rxsc_stats_attr
-	MKA_LOG_DEBUG2("Octets in validated   : %u",stats_rx_secy->in_octets_validated);
-	MKA_LOG_DEBUG2("Octets in decrypted   : %u",stats_rx_secy->in_octets_decrypted);
-	MKA_LOG_DEBUG2("Packets in OK         : %u",stats_rx_sc->in_pkts_ok); // Packets which passed all checks
-	MKA_LOG_DEBUG2("Packets in unchecked  : %u",stats_rx_sc->in_pkts_unchecked); // Packets with invalid macsec frame, accepted because validateFrames == Disabled
-	MKA_LOG_DEBUG2("Packets in delayed    : %u",stats_rx_sc->in_pkts_delayed); // Packets with pn < minimum, accepted because replay protect is inactive
-	MKA_LOG_DEBUG2("Packets in late       : %u",stats_rx_sc->in_pkts_late); // Packets with pn < minimum, discarded because replay protect is active
-	MKA_LOG_DEBUG2("Packets in invalid    : %u",stats_rx_sc->in_pkts_invalid); // Packets with invalid macsec frame, accepted because validateFrames == Check
-	MKA_LOG_DEBUG2("Packets in not valid  : %u",stats_rx_sc->in_pkts_not_valid); // Packets with invalid macsec frame, discarded because validateFrames == Strict
-*/
-    return MKA_OK;
+    return err;
 }
