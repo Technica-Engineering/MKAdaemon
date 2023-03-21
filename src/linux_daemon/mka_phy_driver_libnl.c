@@ -489,6 +489,13 @@ static void set_xpn_flag(t_MKA_libnl_status *my_libnl_status)
 }
 #endif // CONFIG_MACSEC_XPN_SUPPORT
 
+static bool cipher_suites_are_equivalent(uint64_t cipher_suite_a, uint64_t cipher_suite_b){
+	if (cipher_suite_a == cipher_suite_b) return true;
+	if ((cipher_suite_a == 0x0080C20001000001ULL) && (cipher_suite_b == 0x0080020001000001ULL)) return true;
+	if ((cipher_suite_a == 0x0080020001000001ULL) && (cipher_suite_b == 0x0080C20001000001ULL)) return true;
+	return false;
+}
+
 static int macsec_drv_create_transmit_sc(
 	t_MKA_bus bus,
 	t_MKA_libnl_status *my_libnl_status,
@@ -636,7 +643,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 	
 	if ( // In dynamic mode, we need to teardown the interface if a different cipher is requested
 		(my_libnl_status->init_done) && 
-	    (my_libnl_status->cipher_suite != config->current_cipher_suite) &&
+	    (!cipher_suites_are_equivalent(my_libnl_status->cipher_suite, config->current_cipher_suite)) &&
 		(cfg->impl.intf_mode == MKA_INTF_MODE_DYNAMIC)
 	) {
 		MKA_LOG_INFO("Cipher change requested in dynamic mode. Tearing down controlled interface to create a new one with the different cipher");
@@ -770,7 +777,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 		my_libnl_status->cipher_suite = config->current_cipher_suite;
 	}
 	*/
-	if (my_libnl_status->cipher_suite != config->current_cipher_suite){
+	if (!cipher_suites_are_equivalent(my_libnl_status->cipher_suite, config->current_cipher_suite)){
 		MKA_LOG_WARNING("Configured Cipher suite is %llx, but negotiated %llx. Dynamic cipher negotiation is not supported by Linux", my_libnl_status->cipher_suite, config->current_cipher_suite);
 	}
 
