@@ -199,7 +199,7 @@ void dbus_update_status(){
   // Structures for BusInfo
   t_MKA_bus_info mka_bus_info;
   GVariant *bus_info_tuple[3];
-  char peer_sci_str[21];
+  char peer_sci_str[24];
   GVariant *bus_info;
 
 
@@ -240,7 +240,7 @@ void dbus_update_status(){
     for (int i=0;i<6;i++){
       snprintf(peer_sci_str+(3*i), 4, "%02x:", mka_bus_info.peer_sci.addr[i]);
     }
-    snprintf(peer_sci_str+15, 6, "%u", mka_bus_info.peer_sci.port);
+    snprintf(peer_sci_str+18, 6, "%u", mka_bus_info.peer_sci.port);
     bus_info_tuple[2] = g_variant_new_string(peer_sci_str);
     bus_info = g_variant_new_tuple(bus_info_tuple,3);
     //MKA_LOG_DEBUG1("Type string is %s",g_variant_get_type_string(bus_info));
@@ -274,7 +274,7 @@ on_bus_acquired (GDBusConnection *connection,
       g_strfreev(busname_split);
       //strncat(intf_name, g_dbus_escape_object_path(busname), IFNAMSIZ); // g_dbus_escape object is only available on glib >=2.68
       strncat(intf_name, busname, IFNAMSIZ);
-      strcat(intf_name, "/BUS");
+      strncat(intf_name, "/BUS", 4);
       g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (interfaces[bus]), connection, intf_name, &error);
     }
 }
@@ -293,6 +293,7 @@ on_name_lost (GDBusConnection *connection,
               gpointer         user_data)
 {
   MKA_LOG_DEBUG1 ("Lost the name %s", name);
+  MKA_LOG_DEBUG1 ("Do you have the policy file for D-Bus in /usr/share/dbus-1/system.d/de.technica_engineering.mkad.conf?");
 }
 
 static void* dbus_server_thread(void* dbus_arg){
