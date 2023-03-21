@@ -37,6 +37,7 @@
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <linux/if_link.h>
+#include <pthread.h>
 
 #define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
@@ -293,7 +294,7 @@ static int dump_callback(struct nl_msg *msg, void *argp)
 }
 
 static void txsc_cache_invalidate(){
-	MKA_LOG_DEBUG1("Invalidating TxSC Cache");
+	MKA_LOG_DEBUG2("Invalidating TxSC Cache");
 	pthread_mutex_lock(&txsc_info_cache_mutex);
 	txsc_info_cache_timestamp.tv_sec = 0;
 	txsc_info_cache_timestamp.tv_nsec = 0;
@@ -1251,21 +1252,21 @@ static t_MKA_result txsc_cache_is_hit(){
 	clock_gettime(CLOCK_MONOTONIC,&now);
 	bool cache_miss = false;
 	if (now.tv_sec - txsc_info_cache_timestamp.tv_sec > 1){
-		MKA_LOG_DEBUG1("More than 1 second elapsed, cache MISS\n");
+		MKA_LOG_DEBUG3("More than 1 second elapsed, cache MISS\n");
 		cache_miss = true;
 	} else if (now.tv_sec - txsc_info_cache_timestamp.tv_sec == 1){
 		if ((now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec  > TXSC_CACHE_EXPIRATION_NS){
-			MKA_LOG_DEBUG1(" Elapsed %d ns > %d, cache MISS", (now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec,TXSC_CACHE_EXPIRATION_NS);
+			MKA_LOG_DEBUG3(" Elapsed %d ns > %d, cache MISS", (now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec,TXSC_CACHE_EXPIRATION_NS);
 			cache_miss = true;
 		} else {
-			MKA_LOG_DEBUG1(" Elapsed %d ns < %d, cache HIT", (now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec,TXSC_CACHE_EXPIRATION_NS);
+			MKA_LOG_DEBUG3(" Elapsed %d ns < %d, cache HIT", (now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec,TXSC_CACHE_EXPIRATION_NS);
 		}
 	} else {
 		if (now.tv_nsec - txsc_info_cache_timestamp.tv_nsec > TXSC_CACHE_EXPIRATION_NS){
-			MKA_LOG_DEBUG1(" Elapsed %d ns > %d, cache MISS", now.tv_nsec - txsc_info_cache_timestamp.tv_nsec, TXSC_CACHE_EXPIRATION_NS);
+			MKA_LOG_DEBUG3(" Elapsed %d ns > %d, cache MISS", now.tv_nsec - txsc_info_cache_timestamp.tv_nsec, TXSC_CACHE_EXPIRATION_NS);
 			cache_miss = true;
 		} else {
-			MKA_LOG_DEBUG1(" Elapsed %d ns < %d, cache HIT", now.tv_nsec - txsc_info_cache_timestamp.tv_nsec, TXSC_CACHE_EXPIRATION_NS);
+			MKA_LOG_DEBUG3(" Elapsed %d ns < %d, cache HIT", now.tv_nsec - txsc_info_cache_timestamp.tv_nsec, TXSC_CACHE_EXPIRATION_NS);
 		}
 	}
 
@@ -1350,7 +1351,7 @@ t_MKA_result MKA_PHY_GetMacSecStats(t_MKA_bus bus, t_MKA_stats_transmit_secy * s
 		memcpy(stats_tx_sc, &my_libnl_status->txsc_info_cache_data.stats.stats_tx_sc, sizeof(t_MKA_stats_receive_secy));
 		memcpy(stats_rx_sc, &my_libnl_status->txsc_info_cache_data.stats.stats_rx_sc, sizeof(t_MKA_stats_receive_sc));
 		pthread_mutex_unlock(&txsc_info_cache_mutex);
-	/*
+	
 		// These are in: u64 per-SecY stats - macsec_secy_stats_attr
 		MKA_LOG_DEBUG2("Packets out untagged  : %u",stats_tx_secy->out_pkts_untagged);
 		MKA_LOG_DEBUG2("Packets out too long  : %u",stats_tx_secy->out_pkts_too_long);
@@ -1376,7 +1377,6 @@ t_MKA_result MKA_PHY_GetMacSecStats(t_MKA_bus bus, t_MKA_stats_transmit_secy * s
 		MKA_LOG_DEBUG2("Packets in late       : %u",stats_rx_sc->in_pkts_late); // Packets with pn < minimum, discarded because replay protect is active
 		MKA_LOG_DEBUG2("Packets in invalid    : %u",stats_rx_sc->in_pkts_invalid); // Packets with invalid macsec frame, accepted because validateFrames == Check
 		MKA_LOG_DEBUG2("Packets in not valid  : %u",stats_rx_sc->in_pkts_not_valid); // Packets with invalid macsec frame, discarded because validateFrames == Strict
-	*/
 	}
     return err;
 }
