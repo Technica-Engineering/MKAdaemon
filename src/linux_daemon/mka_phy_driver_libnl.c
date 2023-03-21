@@ -285,8 +285,8 @@ static int dump_callback(struct nl_msg *msg, void *argp)
 				if (err == 0){
 					err = nla_parse_nested(tb2, MACSEC_RXSC_ATTR_MAX, tb[MACSEC_RXSC_ATTR_STATS],NULL);
 					if (err == 0){
-						arg->stats->stats_rx_secy.in_octets_validated = nla_get_u64(tb[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_VALIDATED]);
-						arg->stats->stats_rx_secy.in_octets_decrypted = nla_get_u64(tb[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_DECRYPTED]);
+						arg->stats->stats_rx_secy.in_octets_validated = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_VALIDATED]);
+						arg->stats->stats_rx_secy.in_octets_decrypted = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_DECRYPTED]);
 						arg->stats->stats_rx_sc.in_pkts_unchecked = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_UNCHECKED]);
 						arg->stats->stats_rx_sc.in_pkts_delayed = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_DELAYED]);
 						arg->stats->stats_rx_sc.in_pkts_ok = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_PKTS_OK]);
