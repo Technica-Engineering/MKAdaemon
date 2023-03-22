@@ -64,6 +64,11 @@
     /*lint -e{9087} Unavoidable pointer cast */ \
     fifo_pop(&pDescriptor->rx_fifo, (void*)pEntry, (uint16_t)sizeof(t_mka_l2_frame*))
 
+/* Get whether rx-packet FIFO is empty */
+#define RX_PFIFO_EMPTY(pDescriptor) \
+    /*lint -e{9087} Unavoidable pointer cast */ \
+    fifo_empty(&pDescriptor->rx_fifo)
+
 
 /*******************        Types             ***********************/
 typedef struct {
@@ -310,6 +315,12 @@ t_MKA_result MKA_l2_receive(t_MKA_bus bus, uint8_t *packet, uint32_t *len)
         } // No packet pending
         else {
             // No action
+        }
+
+        // Case RX FIFO not empty
+        if (!RX_PFIFO_EMPTY(l2)) {
+            // chain execution of additional ticks until there are no more frames
+            mka_main_loop_wakeup();
         }
     }
 
