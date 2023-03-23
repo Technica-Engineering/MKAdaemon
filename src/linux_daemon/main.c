@@ -94,7 +94,7 @@ int main( int argc, char *argv[] )
             case 'v':
                 verbose = atoi(optarg);
                 if (verbose < 0 || verbose > 3){
-                    printf("Error: Verbosity must be between 0 and 3\n");
+                    fprintf(stderr, "Error: Verbosity must be between 0 and 3\n");
                     exit(EXIT_FAILURE);
                 }
                 break;
@@ -113,12 +113,12 @@ int main( int argc, char *argv[] )
     }
 
     if (config_file_path == NULL){
-        printf("Error: config file is required (use argument -h for help)\n");
+        fprintf(stderr, "Error: config file is required (use argument -h for help)\n");
         exit(EXIT_FAILURE);
     }
 
     if (pidfile_path != NULL && daemonize == false){
-        printf("Error: Conflicting options. -p may only be used when daemonizing into background (without -f)\n");
+        fprintf(stderr, "Error: Conflicting options. -p may only be used when daemonizing into background (without -f)\n");
         exit(EXIT_FAILURE);
     }
 
@@ -131,7 +131,7 @@ int main( int argc, char *argv[] )
 
     if (daemonize == true){
         if (pipe(child_pipe) != 0) {
-            printf("Failed to create pipe");
+            fprintf(stderr, "Failed to create pipe");
             exit(EXIT_FAILURE);
         }
         // Start background process
@@ -150,7 +150,7 @@ int main( int argc, char *argv[] )
             daemon_main();
         } else if (pid == -1) {
             // parent but no child has been created.
-            printf("Error when creating background process\n");
+            fprintf(stderr, "Error when creating background process\n");
             exit(EXIT_FAILURE);
         } else {
             // parent and the child is running.
@@ -192,6 +192,12 @@ void daemon_main()
     // Read configuration file
     config = mka_config_load(config_file_path);
 
+    if (NULL == config) {
+        fprintf(stderr, "ERROR: configuration is invalid, aborting.\n");
+        if (pidfile_handle != NULL) pidfile_close(pidfile_handle);
+        exit(EXIT_FAILURE);
+    }
+
     if (verbose != -1){
         mka_active_log_level = MKA_LOGLEVEL_DEBUG;
         mka_active_log_verbosity = (uint8_t)verbose;
@@ -202,10 +208,10 @@ void daemon_main()
         pidfile_handle = pidfile_open(pidfile_path, 0600, &otherpid);
         if (pidfile_handle == NULL) {
             if (errno == EEXIST) {
-                printf("Error: MKA Daemon already running, pid: %jd.", (intmax_t)otherpid);
+                fprintf(stderr, "Error: MKA Daemon already running, pid: %jd.", (intmax_t)otherpid);
                 exit(EXIT_FAILURE);
             }
-            printf("Error: Cannot open or create pidfile\n");
+            fprintf(stderr, "Error: Cannot open or create pidfile\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -230,12 +236,12 @@ void daemon_main()
     sAction.sa_sigaction = NULL;
     sAction.sa_handler = &signalHandlerSIGTERM;
     if(sigaction(SIGTERM, &sAction, &default_SIGTERM) < 0) {
-        printf("Error: Failed to register signal handlers\n");
+        fprintf(stderr, "Error: Failed to register signal handlers\n");
         if (pidfile_handle != NULL) pidfile_close(pidfile_handle);
         exit(EXIT_FAILURE);
     }
     if(sigaction(SIGINT, &sAction, &default_SIGINT) < 0) {
-        printf("Error: Failed to register signal handlers\n");
+        fprintf(stderr, "Error: Failed to register signal handlers\n");
         if (pidfile_handle != NULL) pidfile_close(pidfile_handle);
         exit(EXIT_FAILURE);
     }
