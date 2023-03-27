@@ -494,9 +494,6 @@ static bool validate_interface(yaml_event_t *event, char* context, t_config_elem
 
             MKA_ASSERT(!cfg->impl.phy_settings.DA_bypass[0].enable,
                 "Parameter 'phy_mac_bypass' is incompatible with 'drv_macsec_mode' != MEDIACONVERTER.");
-
-            MKA_ASSERT(!cfg->impl.phy_settings.transmit_sci,
-                "Parameter 'transmit_sci' is incompatible with 'drv_macsec_mode' != MEDIACONVERTER.");
         }
     }
 

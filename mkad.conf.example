@@ -224,6 +224,13 @@ secy_polling_ms: 500
 # Example:
 #    drv_macsec_mode: software
 
+#### Setting "phy_transmit_sci", part of interface settings.
+# Whether to include Secure Channel Identifier in the MACsec tag.
+# By default phy_transmit_sci is set to false
+#
+# Example:
+#    phy_transmit_sci: true
+
 interfaces:
   - device: "eth0"
     protected_device: "eth0.macsec"
