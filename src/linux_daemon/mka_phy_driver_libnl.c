@@ -557,16 +557,17 @@ static int macsec_drv_create_transmit_sc(
 		rtnl_link_macsec_set_offload(link, true);
 	}
 #else // compiled without offloading
-	MKA_ASSERT(MKA_MACSEC_OFFLOADING != cfg->impl.mode, "While configuring bus %i, hardware offload is requested but not supported.", bus);
+	MKA_ASSERT(MKA_MACSEC_OFFLOADING != cfg->impl.mode, "While configuring bus %i, hardware offload is requested but not supported. If your phy offloading capable, and does your driver support it?", bus);
 #endif
 
 	err = rtnl_link_add(my_libnl_status->nl_sk, link, NLM_F_CREATE);
 	if (err == -NLE_BUSY) {
-		MKA_LOG_ERROR("link already exists!");
+		MKA_LOG_ERROR("link already exists! Please remove the existing macsec interface before launcing mkad. You may use \"ip link delete\".");
 		return MKA_NOT_OK;
 	} else if (err < 0) {
 		rtnl_link_put(link);
 		MKA_LOG_ERROR("couldn't create link: err %d", err);
+		MKA_LOG_ERROR("Is your kernel Macsec capable? Check for the CONFIG_MACSEC configuration flag or the macsec module.");
 		return MKA_NOT_OK;
 	}
 
@@ -684,10 +685,11 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 			strlcpy(my_libnl_status->phys_ifname, cfg->port_name, sizeof(my_libnl_status->phys_ifname));
 
 			macsec_drv_create_transmit_sc(bus, my_libnl_status, aux_tx_sci_pt, requested_cipher_suite);
-	    		//Set send_sci for the first time.
-	    		MKA_LOG_DEBUG1("Setting send_sci=%d", cfg->impl.phy_settings.transmit_sci);
-	    		rtnl_link_macsec_set_send_sci(my_libnl_status->link, cfg->impl.phy_settings.transmit_sci);
-	    		my_libnl_status->transmit_sci = cfg->impl.phy_settings.transmit_sci;
+
+			//Set send_sci for the first time.
+			MKA_LOG_DEBUG1("Setting send_sci=%d", cfg->impl.phy_settings.transmit_sci); 
+			rtnl_link_macsec_set_send_sci(my_libnl_status->link, cfg->impl.phy_settings.transmit_sci);
+			my_libnl_status->transmit_sci = cfg->impl.phy_settings.transmit_sci;	
 	}
 
 	// If the requested port status (up or down) is different from the current one, update it
@@ -751,14 +753,14 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 		rtnl_link_macsec_set_encrypt(my_libnl_status->link, encrypt);
 		my_libnl_status->encrypt = encrypt;
 	}
-
-	 //Update transmit_sci, if change it
+	
+	//Update transmit_sci, if changed
 	if (my_libnl_status->transmit_sci != cfg->impl.phy_settings.transmit_sci) {
 		MKA_LOG_DEBUG1("Update send_sci=%d", cfg->impl.phy_settings.transmit_sci);
 		rtnl_link_macsec_set_send_sci(my_libnl_status->link, cfg->impl.phy_settings.transmit_sci);
 		my_libnl_status->transmit_sci = cfg->impl.phy_settings.transmit_sci;
 	}
-	
+
 	// If requested replay protection or replay window are different from their current values, set them
 	if (
 		(my_libnl_status->replay_protect != config->replay_protect) ||
