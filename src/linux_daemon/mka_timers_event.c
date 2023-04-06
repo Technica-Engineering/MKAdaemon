@@ -40,6 +40,7 @@ struct t_mka_slot_struct {
     bool enable;
     uint32_t expiry;
     bool waiting_reload;
+    t_mka_timer *backref;
 };
 
 static t_mka_slot timer_slots[MKA_TIMER_NUM] = {0};
@@ -53,11 +54,21 @@ static t_mka_slot* get_slot(t_mka_timer* const timer);
 static t_mka_slot* get_slot(t_mka_timer* const timer)
 {
     for(uint_t i=0U; (NULL == timer->ref) && (i<MKA_TIMER_NUM); ++i) {
+        if (timer_slots[i].backref == timer) { 
+            timer_slots[i].enable = true;
+            timer_slots[i].expiry = MKA_TIMER_MAX;
+
+            timer->ref = &timer_slots[i];
+        }
+    }
+
+    for(uint_t i=0U; (NULL == timer->ref) && (i<MKA_TIMER_NUM); ++i) {
         if (!timer_slots[i].enable) {
             timer_slots[i].enable = true;
             timer_slots[i].expiry = MKA_TIMER_MAX;
 
             timer->ref = &timer_slots[i];
+            timer_slots[i].backref = timer;
         }
     }
 
