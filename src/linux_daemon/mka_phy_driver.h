@@ -19,6 +19,14 @@
 * this program. If not, see https://www.gnu.org/licenses/
 *
 *******************************************************************************/
+/****** Copyright 2021 Technica Engineering ******************************//**
+ * @file        mka_phy_driver.h
+ * @version     1.0.0
+ * @author      Jordi Augé
+ * @brief       SecY interface to Linux libnl
+ *
+ * @{
+ */
 
 #ifndef MKA_PHY_DRIVER_H
 #define MKA_PHY_DRIVER_H
@@ -46,7 +54,7 @@ t_MKA_result MKA_PHY_GetMacSecStats(t_MKA_bus bus, t_MKA_stats_transmit_secy * s
 
 
 
-
-
-
 #endif
+
+/** @} */
+

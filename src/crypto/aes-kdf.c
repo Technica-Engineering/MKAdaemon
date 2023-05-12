@@ -35,7 +35,7 @@
  * Returns: true on success, false on failure
  */
 bool ieee8021x_aes_kdf(const uint8_t *key, size_t key_len,
-		   const uint8_t *label, uint32_t label_len,
+            const uint8_t *label, uint32_t label_len,
             const uint8_t *context, uint32_t ctx_len,
             uint32_t ret_len, uint8_t *ret)
 {

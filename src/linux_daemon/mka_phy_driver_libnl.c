@@ -19,7 +19,14 @@
 * this program. If not, see https://www.gnu.org/licenses/
 *
 *******************************************************************************/
-
+/****** Copyright 2021 Technica Engineering ******************************//**
+ * @file        mka_phy_driver_libnl.c
+ * @version     1.0.0
+ * @author      Jordi Augé
+ * @brief       SecY interface to Linux libnl
+ *
+ * @{
+ */
 #include <sys/types.h>
 #include "mka_private.h"
 #include "mka_phy_driver.h"
@@ -492,8 +499,8 @@ static void set_xpn_flag(t_MKA_libnl_status *my_libnl_status)
 
 static bool cipher_suites_are_equivalent(uint64_t cipher_suite_a, uint64_t cipher_suite_b){
 	if (cipher_suite_a == cipher_suite_b) return true;
-	if ((cipher_suite_a == 0x0080C20001000001ULL) && (cipher_suite_b == 0x0080020001000001ULL)) return true;
-	if ((cipher_suite_a == 0x0080020001000001ULL) && (cipher_suite_b == 0x0080C20001000001ULL)) return true;
+    if ((cipher_suite_a == MKA_CS_ID_GCM_AES_128) && (cipher_suite_b == MKA_CS_ID_GCM_AES_128_2006)) return true;
+    if ((cipher_suite_a == MKA_CS_ID_GCM_AES_128_2006) && (cipher_suite_b == MKA_CS_ID_GCM_AES_128)) return true;
 	return false;
 }
 
@@ -538,7 +545,8 @@ static int macsec_drv_create_transmit_sc(
 
 	// GCM_AES_128 is supposed to be 0x0080C20001000001ULL, but for some reason, it only works with the old, 
 	// deprecated ID, hence this ugly workaround.
-	if (cipher_suite == 0x0080C20001000001ULL) cipher_suite = 0x0080020001000001ULL;
+    // PS: the reason is a typo in IEEE Std 802.1AE-2006, which was incorrectly shown.
+    if (cipher_suite == MKA_CS_ID_GCM_AES_128) cipher_suite = MKA_CS_ID_GCM_AES_128_2006;
 
 	rtnl_link_macsec_set_cipher_suite(link, cipher_suite);
 	my_libnl_status->cipher_suite = cipher_suite;
@@ -683,6 +691,11 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 				return MKA_NOT_OK;
 			}
 			strlcpy(my_libnl_status->phys_ifname, cfg->port_name, sizeof(my_libnl_status->phys_ifname));
+
+            // null cipher is not accepted by lower layers, just replace it for default, it won't be used anyway
+            if (requested_cipher_suite == MKA_CS_NULL) {
+                requested_cipher_suite = MKA_CS_ID_GCM_AES_128_2006;
+            }
 
 			macsec_drv_create_transmit_sc(bus, my_libnl_status, aux_tx_sci_pt, requested_cipher_suite);
 
@@ -1272,7 +1285,7 @@ static t_MKA_result txsc_cache_is_hit(){
 	clock_gettime(CLOCK_MONOTONIC,&now);
 	bool cache_miss = false;
 	if (now.tv_sec - txsc_info_cache_timestamp.tv_sec > 1){
-		MKA_LOG_DEBUG3("More than 1 second elapsed, cache MISS\n");
+        MKA_LOG_DEBUG3("More than 1 second elapsed, cache MISS");
 		cache_miss = true;
 	} else if (now.tv_sec - txsc_info_cache_timestamp.tv_sec == 1){
 		if ((now.tv_nsec + 1000000000) - txsc_info_cache_timestamp.tv_nsec  > TXSC_CACHE_EXPIRATION_NS){
@@ -1400,3 +1413,6 @@ t_MKA_result MKA_PHY_GetMacSecStats(t_MKA_bus bus, t_MKA_stats_transmit_secy * s
 	}
     return err;
 }
+
+/** @} */
+

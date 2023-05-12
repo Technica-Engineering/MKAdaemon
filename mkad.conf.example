@@ -117,6 +117,11 @@ secy_polling_ms: 500
 #   CONF_30     -> Negotiates MACSEC with integrity and confidentiality, offset 30
 #   CONF_50     -> Negotiates MACSEC with integrity and confidentiality, offset 50
 #
+# NOTE: With option DISABLE, please also consider the following two settings are
+#           necessary in order to achieve communication based on MKA authentication:
+#   1) "ciphers: NULL"                <- allows KaY to accept peer's macsec_desired=0 as valid
+#   2) "unsecure_allowed: mka_server" <- allows LOGON to direct CP into AUTHENTICATED mode
+#
 # Example:
 #    macsec: INTEGRITY
 
@@ -203,6 +208,12 @@ secy_polling_ms: 500
 # Sets a list of ciphers in order of preference. A non-listed cipher will not be permitted.
 # Limited to one cipher if intf_mode is STATIC
 # Possible ciphers: { GCM_AES_128, GCM_AES_256, GCM_AES_XPN_128, GCM_AES_XPN_256, NULL }
+#
+# NOTE: When NULL cipher is listed, mkad is allowed to negotiate with peers that do not
+#       implement MACsec. In such scenario, this peer would dynamically switch to
+#       'macsec_desired=0'.
+#       In order to achieve communication in such a scenario, it is also required to
+#       configure setting 'unsecure_allowed' accordingly (e.g. mka_server).
 #
 # Example:
 #    ciphers: GCM_AES_128 GCM_AES_256 GCM_AES_XPN_128 GCM_AES_XPN_256 NULL

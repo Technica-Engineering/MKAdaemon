@@ -522,6 +522,11 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
         continue_process = mka_handle_basic_parameter_set(bus, bps);
     }
 
+    /* Re-evaluate in what remote list we are listed, based on the processing
+     * of potential/live peer lists below, which must be populated right after
+     * basic parameter set. */
+    peer->remote_state = MKA_PEER_NONE;
+
     memset(header_presence, 0, sizeof(header_presence));
 
     while(((length - offset) > (sizeof(t_mka_param_generic) + MKA_ICV_LENGTH)) &&
@@ -543,8 +548,10 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
         else {
             switch(param_type) {
             case PARAMETER_LIVE_PEER_LIST:
+                continue_process = mka_handle_peer_list(bus, &packet[offset], param_len, MKA_PEER_LIVE);
+                break;
             case PARAMETER_POTENTIAL_PEER_LIST:
-                continue_process = mka_handle_peer_list(bus, &packet[offset], param_len);
+                continue_process = mka_handle_peer_list(bus, &packet[offset], param_len, MKA_PEER_POTENTIAL);
                 break;
             case PARAMETER_SAK_USE:
                 // if we are not key server, a SAK USE parameter could be meaningless unless
@@ -751,12 +758,18 @@ bool mka_select_macsec_usage(t_MKA_bus bus)
 
     } // Case I do not want MACSEC, peer wants MACSEC
     else if (!local_macsec && remote_macsec) {
-        // Peer is live: already saw us, and did not change "macsec_desired" to false.
-        // Peer is not going to work without macsec. No further negotiation possible.
+        // Case peer in list:
+        //  LIVE: already saw us, and did not change "macsec_desired" to false --> disagreement
+        //  ELSE: still can change "macsec_desired" to false --> negotiation possible
+
         participant->advertise_macsec_desired = false;
         participant->advertise_macsec_capability = MKA_MACSEC_NOT_IMPLEMENTED;
+        participant->cipher = MKA_CS_NULL; // attempt negotiation with NULL cipher / MACsec disable
 
+        if (MKA_PEER_LIVE == peer->remote_state) {
+            // Peer is not going to work without macsec. No further negotiation possible.
         agreement = false;
+        }
 
     } // Case I want MACSEC, peer wants MACSEC
     else if (remote_macsec) {
