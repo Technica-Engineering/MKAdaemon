@@ -344,7 +344,7 @@ bool mka_encode_basic_parameter_set(t_MKA_bus bus, uint8_t *packet, uint32_t *le
     return continue_process;
 }
 
-bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len)
+bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, t_mka_peer_state type)
 {
     t_mka_kay*const ctx = &mka_kay[bus];
     t_mka_participant*const participant = &ctx->participant;
@@ -387,6 +387,10 @@ bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len)
                 // we are not seen by peer
             }
         }
+    }
+
+    if (self_seen) {
+        peer->remote_state = type;
     }
 
     // When a potential peer sees us, peer becomes live
@@ -630,7 +634,7 @@ bool mka_encode_distributed_sak(t_MKA_bus bus, uint8_t *packet, uint32_t *length
     //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
     t_mka_dist_sak *const param = (t_mka_dist_sak*)&packet[*length];
     uint8_t* const param_past_header = &packet[(*length) + sizeof(t_mka_dist_sak)];
-    bool const empty = (MKA_CS_NULL == participant->cipher);
+    bool const empty = (MKA_CS_NULL == participant->cipher) && (participant->is_key_server);
     bool const present = empty || (MKA_SAK_KS_DISTRIBUTING == participant->sak_state);
     bool const header = (MKA_CS_ID_GCM_AES_128 != participant->cipher);
     uint32_t const wrapped_size = (
