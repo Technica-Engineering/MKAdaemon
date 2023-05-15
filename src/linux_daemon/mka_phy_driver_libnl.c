@@ -647,7 +647,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 	if (cfg->impl.intf_mode == MKA_INTF_MODE_STATIC){
 		requested_cipher_suite = cfg->impl.cipher_preference[0];
 	} else { // In dynamic mode, obey whichever cipher the protocol says, unless we still don't know
-		if (config->current_cipher_suite == 0xffffffffffffffff) requested_cipher_suite = cfg->impl.cipher_preference[0];
+		if (config->current_cipher_suite == MKA_CS_NULL) requested_cipher_suite = cfg->impl.cipher_preference[0];
 		else requested_cipher_suite = config->current_cipher_suite;
 	}
 	

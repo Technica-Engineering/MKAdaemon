@@ -473,6 +473,9 @@ static bool validate_interface(yaml_event_t *event, char* context, t_config_elem
         MKA_ASSERT(MKA_DeriveICK(MKA_ALGORITHM_AGILITY, &key->cak, &key->ckn, key->cak.length, &key->ick),
             "Cannot derive CAK/CKN into ICK key!");
 
+        MKA_ASSERT(cfg->impl.cipher_preference[0] != MKA_CS_INVALID, 
+            "Parameter 'ciphers' contains no elements. Please specify at least one cipher suite.");
+
         if ((cfg->impl.intf_mode == MKA_INTF_MODE_STATIC) && cfg->port_capabilities.macsec) {
             MKA_ASSERT(cfg->impl.cipher_preference[1] == MKA_CS_INVALID, 
                 "In Static interface mode, the list of supported Ciphers must have a single entry.");
