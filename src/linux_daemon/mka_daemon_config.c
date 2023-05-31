@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <errno.h>
+#include <linux/if.h> // IFNAMSIZ
 #include "mka_private.h"
 #include "mka_phy_driver.h"
 
@@ -147,8 +148,8 @@ static const t_config_elem interface_elements[] = {
     { false,    "announcements",            ETYPE_BOOL,             BUS_PARAM(port_capabilities.announcements), 0U, 0U },
     { false,    "listener",                 ETYPE_BOOL,             BUS_PARAM(port_capabilities.listener),      0U, 0U },
 
-    { true,     "protected_device",         ETYPE_STRING,           BUS_PARAM(controlled_port_name),            0U, 0U },
-    { true,     "device",                   ETYPE_STRING,           BUS_PARAM(port_name),                       0U, 0U },
+    { true,     "protected_device",         ETYPE_STRING,           BUS_PARAM(controlled_port_name),            1U, IFNAMSIZ },
+    { true,     "device",                   ETYPE_STRING,           BUS_PARAM(port_name),                       1U, IFNAMSIZ },
 
     { false,    "kay",                      ETYPE_BOOL,             BUS_PARAM(kay.enable),                      0U, 1U },
     { true,     "priority",                 ETYPE_UINT8,            BUS_PARAM(kay.actor_priority),              0U, 255U },
@@ -579,6 +580,31 @@ static bool parse_elem_string(yaml_parser_t *parser, yaml_event_t *event, t_conf
     if (result) {
         char const **holder = (char const**)elem->holder;
         *holder = strdup((char const*)event->data.scalar.value);
+    }
+
+    // error
+    if (!result) {
+        // no validation action
+
+    } // no range check
+    else if ((0U == elem->uint_min) && (0U == elem->uint_max)) {
+        // no validation action
+
+    } // string too short
+    else if (strlen((char const*)event->data.scalar.value) < elem->uint_min) {
+        FATAL_AT(event, "while importing [%s], value [%s] invalid, string is too short (< %i).",
+                elem->name, event->data.scalar.value, elem->uint_min);
+        result = false;
+
+    } // string too long
+    else if (strlen((char const*)event->data.scalar.value) >= elem->uint_max) {
+        FATAL_AT(event, "while importing [%s], value [%s] invalid, string is too long (>= %i).",
+                elem->name, event->data.scalar.value, elem->uint_max);
+        result = false;
+
+    } // validation ok
+    else {
+        // no action
     }
 
     return result;
