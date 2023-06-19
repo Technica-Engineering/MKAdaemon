@@ -823,6 +823,7 @@ bool mka_select_macsec_usage(t_MKA_bus bus)
 
 void mka_peer_cleanup(t_MKA_bus bus)
 {
+    t_MKA_bus_config const*const cfg = &MKA_active_buses_config[bus];
     t_mka_kay*const ctx = &mka_kay[bus];
     t_mka_participant*const participant = &ctx->participant;
     t_mka_peer*const peer = &participant->peer;
@@ -857,11 +858,17 @@ void mka_peer_cleanup(t_MKA_bus bus)
     memset(peer, 0, sizeof(t_mka_peer));
     mka_timer_stop(&peer->expiry);
 
-    // assume default cipher suite with confidentiality offset 0 in case peer
-    // does not emit an announcement with the list of supported MACsec cipher suites
-    // see IEEE802.1X-2020 11.12.3 MACsec Cipher Suites TLV
-    peer->compatible_cipher = MKA_CS_ID_GCM_AES_128;
-    peer->compatible_capability = MKA_MACSEC_INT_CONF_0;
+    // possible scenarios (specially important when acting as key server):
+    //  1) peer emits a secure announcement with its own list of preferred ciphers.
+    //      -> see IEEE802.1X-2020 11.12.3 MACsec Cipher Suites TLV
+    //      -> we'll consider peer's list
+    //  2) no announcement
+    //      -> we'll assume our preferred cipher suite is compatible and continue with it
+    //
+
+    // -> we'll set our preferred cipher suite until an announcement is handled
+    peer->compatible_cipher = cfg->impl.cipher_preference[0];
+    peer->compatible_capability = cfg->kay.macsec_capable;
 }
 
 
