@@ -109,7 +109,7 @@ struct TxBasic : public KayTestBase {
         if (layers_reset) {
             layersReset();
         }
-        if (MKA_CS_ID_GCM_AES_128 != test_buses_active_config.impl.cipher_preference[0]) {
+        {
             ann.present_ = true;
             ann.resetCiphers();
             ann.addCipher(MKA_MACSEC_INT_CONF_0, test_buses_active_config.impl.cipher_preference[0]);
