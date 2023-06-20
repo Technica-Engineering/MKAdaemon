@@ -182,7 +182,7 @@ static t_MKA_bus_config const bus_initial = {
     .port_capabilities = {
         .mka = true,
         .macsec = true,
-        .announcements = false,
+        .announcements = true,
         .listener = false
     },
 
