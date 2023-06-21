@@ -1092,7 +1092,6 @@ bool mka_encode_announcements(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
     uint32_t const octet_length_start = (uint32_t)sizeof(t_mka_param_generic) + *length;
     uint32_t octet = octet_length_start;
 
-    bool default_present = false;
     memset(content, 0, sizeof(t_mka_param_generic));
     content->header = PARAMETER_ANNOUNCEMENT;
     content->length_cont = 0U; // pending
@@ -1109,9 +1108,6 @@ bool mka_encode_announcements(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
     uint32_t cidx; // cipher idx
     for(cidx = 0U; cidx<MKA_ARRAY_SIZE(cfg->impl.cipher_preference); ++cidx) {
         t_MKA_ciphsuite const cipher = cfg->impl.cipher_preference[cidx];
-        if (MKA_CS_ID_GCM_AES_128 == cipher) {
-            default_present = true;
-        }
         if ((MKA_CS_NULL != cipher) && (MKA_CS_INVALID != cipher)){
             //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
             t_mka_tlv_macsec_cipher_suites *const entry = (t_mka_tlv_macsec_cipher_suites *)&packet[octet];
@@ -1135,7 +1131,7 @@ bool mka_encode_announcements(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
     uint32_t tlv_length = octet - octet_length_start;
 
     // Case no algorithm is present, OR only default is present OR no MACsec
-    if ((2U == tlv_length) || (default_present && (12U == tlv_length)) ||
+    if ((2U == tlv_length) || (!cfg->port_capabilities.announcements) ||
             (MKA_MACSEC_NOT_IMPLEMENTED == ctx->macsec_capable)) {
         // Nothing: do not transmit this parameter
 

@@ -126,8 +126,7 @@ secy_polling_ms: 500
 #    macsec: INTEGRITY
 
 #### Setting "announcements", part of interface settings.
-# Whether to enable/disable secure announcements.
-# Currently under development.
+# Whether to enable/disable secure announcements. Defaults to on.
 #
 # Example:
 #    announcements: off

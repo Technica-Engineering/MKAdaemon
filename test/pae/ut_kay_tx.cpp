@@ -171,8 +171,7 @@ struct TxBasic : public KayTestBase {
 
         if (sak_learn) {
             bool const is_xpn = (MKA_CS_ID_GCM_AES_XPN_256 == participant->cipher) || (MKA_CS_ID_GCM_AES_XPN_128 == participant->cipher);
-            bool const rcv_ann = (MKA_CS_ID_GCM_AES_128 != test_buses_active_config.impl.cipher_preference[0]) ||
-                                (MKA_CS_INVALID != test_buses_active_config.impl.cipher_preference[1]);
+            bool const rcv_ann = test_buses_active_config.port_capabilities.announcements;
 
             ExpectPresentLayers(M_LPEERS + M_SAKUSE + M_DISTSAK + (rcv_ann ? M_ANN : M_NONE) + M_XPN); //(is_xpn ? M_XPN : 0U));
 
@@ -220,6 +219,7 @@ struct TxWhenClient : public TxBasic { };
 struct TxAnnouncement : public TxBasic {
     virtual void SetUp(void) {
         TxBasic::SetUp();
+        test_buses_active_config.port_capabilities.announcements = true;
         //participant->advertise_macsec_capability = MKA_MACSEC_INT_CONF_0_30_50;
         ctx->macsec_capable = MKA_MACSEC_INT_CONF_0_30_50;
         for(int i=0; i<MKA_ARRAY_SIZE(test_buses_active_config.impl.cipher_preference); ++i) {
@@ -230,6 +230,7 @@ struct TxAnnouncement : public TxBasic {
 
 struct TxXPN : public TxBasic {
     virtual void SetUp(void) {
+        test_buses_active_config.port_capabilities.announcements = true;
         test_buses_active_config.impl.cipher_preference[0] = MKA_CS_ID_GCM_AES_XPN_256;
         test_buses_active_config.impl.cipher_preference[1] = MKA_CS_ID_GCM_AES_XPN_128;
         TxBasic::SetUp();
@@ -908,7 +909,7 @@ TEST_F(TxDistSak, Key256bitsWrappedExtendedHeader)
 
     learnPeerAsKeyServer(/* layer rst */true, /*sak_wrapped*/false);
 
-    ExpectPresentLayers(M_LPEERS + M_SAKUSE + M_DISTSAK + M_ANN + M_XPN);
+    ExpectPresentLayers(M_LPEERS + M_SAKUSE + M_DISTSAK + M_XPN);
 
     EXPECT_THAT(sakuse.plain_tx_,   Eq(false));
     EXPECT_THAT(sakuse.plain_rx_,   Eq(false));
@@ -1371,7 +1372,7 @@ TEST_F(TxAnnouncement, DefaultOnly)
 {
     test_buses_active_config.impl.cipher_preference[0] = MKA_CS_ID_GCM_AES_128;
     HandleTransmission();
-    ExpectPresentLayers(M_NONE);
+    ExpectPresentLayers(M_ANN);
 }
 
 TEST_F(TxAnnouncement, OneNonDefault)
