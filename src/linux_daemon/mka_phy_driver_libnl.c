@@ -387,9 +387,9 @@ t_MKA_result libnl_deinit()
 		if (my_libnl_status->init_done){
 			deinit_interface(my_libnl_status);
 		}
+		nl_cache_free(my_libnl_status->link_cache);
 		nl_socket_free(my_libnl_status->nl_sk);
 		nl_socket_free(my_libnl_status->genl_sk);
-		nl_cache_free(my_libnl_status->link_cache);
 	}
   return MKA_OK;
 }
@@ -1169,6 +1169,8 @@ t_MKA_result MKA_PHY_UpdateRxSA(t_MKA_bus bus, uint8_t an, t_MKA_pn next_pn, boo
 	// Set receive lowest PN
 	MKA_LOG_DEBUG1("set_receive_lowest_pn -> %d: %d",
 		an, next_pn);
+
+	nlmsg_free(msg);
 
 	msg = msg_prepare(bus, MACSEC_CMD_UPD_RXSA, my_libnl_status->ifi);
 	if (!msg){
