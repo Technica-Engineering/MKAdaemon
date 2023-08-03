@@ -20,6 +20,8 @@
 *
 *******************************************************************************/
 
+#pragma GCC diagnostic ignored "-Wstack-usage="
+
 #include "gdbus-mkad-generated.h"
 #include "mka_private.h"
 #include "mka_types.h"

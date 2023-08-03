@@ -569,17 +569,15 @@ static int macsec_drv_create_transmit_sc(
 #endif
 
 	err = rtnl_link_add(my_libnl_status->nl_sk, link, NLM_F_CREATE);
+	rtnl_link_put(link);
 	if (err == -NLE_BUSY) {
 		MKA_LOG_ERROR("link already exists! Please remove the existing macsec interface before launcing mkad. You may use \"ip link delete\".");
 		return MKA_NOT_OK;
 	} else if (err < 0) {
-		rtnl_link_put(link);
 		MKA_LOG_ERROR("couldn't create link: err %d", err);
 		MKA_LOG_ERROR("Is your kernel Macsec capable? Check for the CONFIG_MACSEC configuration flag or the macsec module.");
 		return MKA_NOT_OK;
 	}
-
-	rtnl_link_put(link);
 
 	nl_cache_refill(my_libnl_status->nl_sk, my_libnl_status->link_cache);
 	link = lookup_sc(my_libnl_status->link_cache, my_libnl_status->parent_ifi, sci, cipher_suite);
@@ -723,10 +721,11 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 			rtnl_link_unset_flags(change, IFF_UP);
 
 		err = rtnl_link_change(my_libnl_status->nl_sk, change, change, 0);
-		if (err < 0)
-			return err;
 
 		rtnl_link_put(change);
+
+		if (err < 0)
+			return err;
 
 		my_libnl_status->controlled_port_enabled = config->controlled_port_enabled;
 	}
@@ -1044,6 +1043,7 @@ t_MKA_result MKA_PHY_DeleteTxSA(t_MKA_bus bus, uint8_t an)
 		MKA_LOG_ERROR("%s: failed to communicate: %d (%s)",
 			   __func__, ret, nl_geterror(-ret));
 
+	nlmsg_free(msg);
 	// Now delete the disabled SA
 	msg = msg_prepare(bus, MACSEC_CMD_DEL_TXSA, my_libnl_status->ifi);
 	if (!msg) {
@@ -1248,6 +1248,7 @@ t_MKA_result MKA_PHY_DeleteRxSA(t_MKA_bus bus, uint8_t an)
 		MKA_LOG_ERROR("%s: failed to communicate: %d (%s)",
 			   __func__, ret, nl_geterror(-ret));
 
+	nlmsg_free(msg);
 
 	// Now delete the disabled SA
 	msg = msg_prepare(bus, MACSEC_CMD_DEL_RXSA, my_libnl_status->ifi);
