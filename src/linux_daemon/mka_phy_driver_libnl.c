@@ -387,9 +387,9 @@ t_MKA_result libnl_deinit()
 		if (my_libnl_status->init_done){
 			deinit_interface(my_libnl_status);
 		}
+		nl_cache_free(my_libnl_status->link_cache);
 		nl_socket_free(my_libnl_status->nl_sk);
 		nl_socket_free(my_libnl_status->genl_sk);
-		nl_cache_free(my_libnl_status->link_cache);
 	}
   return MKA_OK;
 }
@@ -569,17 +569,15 @@ static int macsec_drv_create_transmit_sc(
 #endif
 
 	err = rtnl_link_add(my_libnl_status->nl_sk, link, NLM_F_CREATE);
+	rtnl_link_put(link);
 	if (err == -NLE_BUSY) {
 		MKA_LOG_ERROR("link already exists! Please remove the existing macsec interface before launcing mkad. You may use \"ip link delete\".");
 		return MKA_NOT_OK;
 	} else if (err < 0) {
-		rtnl_link_put(link);
 		MKA_LOG_ERROR("couldn't create link: err %d", err);
 		MKA_LOG_ERROR("Is your kernel Macsec capable? Check for the CONFIG_MACSEC configuration flag or the macsec module.");
 		return MKA_NOT_OK;
 	}
-
-	rtnl_link_put(link);
 
 	nl_cache_refill(my_libnl_status->nl_sk, my_libnl_status->link_cache);
 	link = lookup_sc(my_libnl_status->link_cache, my_libnl_status->parent_ifi, sci, cipher_suite);
@@ -664,7 +662,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
     if (!my_libnl_status->init_done) {
       MKA_LOG_DEBUG2("Libnl init for this bus not done. Doing it now..");
 
-			libnl_per_bus_init(bus);
+        MKA_ASSERT(MKA_OK == libnl_per_bus_init(bus), "Initialisation failed while configuring bus %i.", bus);
 
 				// Initialize aux_tx_sci to the value of an empty SCI
 				t_MKA_sci aux_tx_sci;
@@ -675,6 +673,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 				aux_tx_sci.addr[4] = 0xff;
 				aux_tx_sci.addr[5] = 0xff;
 				aux_tx_sci.port = 65535;
+
 				// If the TX SCI matches the empty values, use a sane default instead
 				if (memcmp(tx_sci, &aux_tx_sci, sizeof(t_MKA_sci)) == 0){
 					MKA_LOG_INFO("TX Sci is still unknown, using default value..");
@@ -690,6 +689,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 				MKA_LOG_ERROR("couldn't find ifindex for interface %s", cfg->port_name);
 				return MKA_NOT_OK;
 			}
+
 			strlcpy(my_libnl_status->phys_ifname, cfg->port_name, sizeof(my_libnl_status->phys_ifname));
 
             // null cipher is not accepted by lower layers, just replace it for default, it won't be used anyway
@@ -723,10 +723,11 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 			rtnl_link_unset_flags(change, IFF_UP);
 
 		err = rtnl_link_change(my_libnl_status->nl_sk, change, change, 0);
-		if (err < 0)
-			return err;
 
 		rtnl_link_put(change);
+
+		if (err < 0)
+			return err;
 
 		my_libnl_status->controlled_port_enabled = config->controlled_port_enabled;
 	}
@@ -1044,6 +1045,7 @@ t_MKA_result MKA_PHY_DeleteTxSA(t_MKA_bus bus, uint8_t an)
 		MKA_LOG_ERROR("%s: failed to communicate: %d (%s)",
 			   __func__, ret, nl_geterror(-ret));
 
+	nlmsg_free(msg);
 	// Now delete the disabled SA
 	msg = msg_prepare(bus, MACSEC_CMD_DEL_TXSA, my_libnl_status->ifi);
 	if (!msg) {
@@ -1170,6 +1172,8 @@ t_MKA_result MKA_PHY_UpdateRxSA(t_MKA_bus bus, uint8_t an, t_MKA_pn next_pn, boo
 	MKA_LOG_DEBUG1("set_receive_lowest_pn -> %d: %d",
 		an, next_pn);
 
+	nlmsg_free(msg);
+
 	msg = msg_prepare(bus, MACSEC_CMD_UPD_RXSA, my_libnl_status->ifi);
 	if (!msg){
 		MKA_LOG_ERROR("Error on message prepare");
@@ -1246,6 +1250,7 @@ t_MKA_result MKA_PHY_DeleteRxSA(t_MKA_bus bus, uint8_t an)
 		MKA_LOG_ERROR("%s: failed to communicate: %d (%s)",
 			   __func__, ret, nl_geterror(-ret));
 
+	nlmsg_free(msg);
 
 	// Now delete the disabled SA
 	msg = msg_prepare(bus, MACSEC_CMD_DEL_RXSA, my_libnl_status->ifi);
