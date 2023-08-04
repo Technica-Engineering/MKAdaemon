@@ -662,7 +662,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
     if (!my_libnl_status->init_done) {
       MKA_LOG_DEBUG2("Libnl init for this bus not done. Doing it now..");
 
-			libnl_per_bus_init(bus);
+        if (libnl_per_bus_init(bus) != MKA_OK) return MKA_NOT_OK;
 
 				// Initialize aux_tx_sci to the value of an empty SCI
 				t_MKA_sci aux_tx_sci;
@@ -673,6 +673,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 				aux_tx_sci.addr[4] = 0xff;
 				aux_tx_sci.addr[5] = 0xff;
 				aux_tx_sci.port = 65535;
+
 				// If the TX SCI matches the empty values, use a sane default instead
 				if (memcmp(tx_sci, &aux_tx_sci, sizeof(t_MKA_sci)) == 0){
 					MKA_LOG_INFO("TX Sci is still unknown, using default value..");
@@ -688,6 +689,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
 				MKA_LOG_ERROR("couldn't find ifindex for interface %s", cfg->port_name);
 				return MKA_NOT_OK;
 			}
+
 			strlcpy(my_libnl_status->phys_ifname, cfg->port_name, sizeof(my_libnl_status->phys_ifname));
 
             // null cipher is not accepted by lower layers, just replace it for default, it won't be used anyway
