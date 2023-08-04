@@ -662,7 +662,7 @@ t_MKA_result MKA_PHY_UpdateSecY(t_MKA_bus bus, t_MKA_SECY_config const * config,
     if (!my_libnl_status->init_done) {
       MKA_LOG_DEBUG2("Libnl init for this bus not done. Doing it now..");
 
-        if (libnl_per_bus_init(bus) != MKA_OK) return MKA_NOT_OK;
+        MKA_ASSERT(MKA_OK == libnl_per_bus_init(bus), "Initialisation failed while configuring bus %i.", bus);
 
 				// Initialize aux_tx_sci to the value of an empty SCI
 				t_MKA_sci aux_tx_sci;
