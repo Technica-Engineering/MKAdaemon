@@ -747,13 +747,24 @@ TEST_F(RxBasicParmSet, PeerKeyClientIgnored)
     ASSERT_THAT(peer->state, Eq(MKA_PEER_POTENTIAL));
 }
 
-TEST_F(RxBasicParmSet, MICollision)
+TEST_F(RxBasicParmSet, MICollision_DifferentSCI)
 {
     memcpy(&participant->mi, bps.mi_, 12);
     EXPECT_CALL(mocks, MKA_GetRandomBytes(12, _)) .WillOnce(DoAll(MemcpyToArg<1>((void*)local_mi, 12), Return(true)));
     EXPECT_CALL(mocks, print_action(LoggingMessageContains("MI that collides"), _)) .Times(1);
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
     ASSERT_THAT(peer->state, Eq(MKA_PEER_NONE));
+}
+
+TEST_F(RxBasicParmSet, MICollision_SameSCI)
+{
+    memcpy(&participant->mi, bps.mi_, 12);
+    memcpy(&bps.sci_, &ctx->actor_sci, 16);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received MKPDU with our own SCI address"), _)) .Times(1);
+    EXPECT_CALL(mocks, MKA_CP_SetUsingTransmitSA(0, true)) .Times(0); // NO reset
+    EXPECT_CALL(mocks, MKA_CP_SetUsingReceiveSAs(0, true)) .Times(0); // NO reset
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+    ASSERT_THAT(peer->state, Eq(MKA_PEER_NONE)); // drop effect
 }
 
 TEST_F(RxBasicParmSet, NewPotentialPeer)

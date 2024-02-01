@@ -200,6 +200,10 @@ bool mka_handle_basic_parameter_set(t_MKA_bus bus, t_mka_basic_parameter_set con
     t_mka_participant*const participant = &ctx->participant;
     t_mka_peer *const peer = &participant->peer;
 
+    // Comparisons for evaluating colliding MI
+    bool const is_sci_addr_same_mine = (0 == memcmp(bps->sci.addr, ctx->actor_sci.addr, MKA_L2_ADDR_SIZE));
+    bool const is_mi_same_mine = MKA_mi_equal(participant->mi, bps->actor_mi);
+
     // Role verification, enforced when there's a relation with peer
     if ((MKA_ROLE_FORCE_KEY_SERVER == ctx->role) && (1U == bps->key_server) && (MKA_PEER_NONE != peer->state)) {
         MKA_LOG_WARNING("KaY/%i: Configured as Key Server, received packet from a Key Server. Discarded.", bus);
@@ -216,15 +220,14 @@ bool mka_handle_basic_parameter_set(t_MKA_bus bus, t_mka_basic_parameter_set con
     // Algorithm Agility already validated
     // CKN already validated
 
-    if (MKA_mi_equal(participant->mi, bps->actor_mi)) {
+    if (is_sci_addr_same_mine) {
+        MKA_LOG_WARNING("KaY/%i: Received MKPDU with our own SCI address (replay attack?). Dropped.", bus);
+        continue_process = false;
+    }
+    else if (is_mi_same_mine) {
         MKA_LOG_INFO("KaY/%i: Received packet with MI that collides with bus actor's, selecting new MI.", bus);
         mka_new_participant_mi(bus);
         continue_process = false;
-    }
-
-    // Case packet discarded
-    if (!continue_process) {
-        // Ignore
 
     } // Case no peer registered yet
     else if (MKA_PEER_NONE == peer->state) {
