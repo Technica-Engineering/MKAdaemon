@@ -283,7 +283,7 @@ static int dump_callback(struct nl_msg *msg, void *argp)
 			err = nla_parse_nested(tb, MACSEC_RXSC_ATTR_MAX, nla,
 						NULL);
 			if (err == 0){
-				err = nla_parse_nested(tb2, MACSEC_RXSC_ATTR_MAX, tb[MACSEC_RXSC_ATTR_STATS],NULL);
+				err = nla_parse_nested(tb2, MACSEC_SECY_STATS_ATTR_MAX, tb[MACSEC_RXSC_ATTR_STATS],NULL);
 				if (err == 0){
 					txsc_info_cache_data->stats.stats_rx_secy.in_octets_validated = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_VALIDATED]);
 					txsc_info_cache_data->stats.stats_rx_secy.in_octets_decrypted = nla_get_u64(tb2[MACSEC_RXSC_STATS_ATTR_IN_OCTETS_DECRYPTED]);
