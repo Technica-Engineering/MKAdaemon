@@ -264,6 +264,15 @@ static inline bool MKA_sci_equal(t_MKA_sci const* a, t_MKA_sci const* b)
     return 0 == memcmp(a, b, sizeof(t_MKA_sci));
 }
 
+static inline bool MKA_is_mi_null(uint8_t const* a)
+{
+    uint8_t sum = 0U;
+    for(uint8_t i=0U; i<MKA_MI_LENGTH; ++i) {
+        sum |= a[i];
+    }
+    return 0U == sum;
+}
+
 static inline bool MKA_mi_equal(uint8_t const* a, uint8_t const* b)
 {
     return 0 == memcmp(a, b, MKA_MI_LENGTH);

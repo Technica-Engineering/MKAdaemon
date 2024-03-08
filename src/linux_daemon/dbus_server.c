@@ -273,11 +273,12 @@ on_bus_acquired (GDBusConnection *connection,
       strcpy(intf_name, "/de/technica_engineering/mkad/");
       char **busname_split = g_strsplit(bus_names[bus], ".", -1);
       char *busname = g_strjoinv("", busname_split);
-      g_strfreev(busname_split);
       //strncat(intf_name, g_dbus_escape_object_path(busname), IFNAMSIZ); // g_dbus_escape object is only available on glib >=2.68
       strncat(intf_name, busname, IFNAMSIZ);
       strncat(intf_name, "/BUS", 4);
       g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (interfaces[bus]), connection, intf_name, &error);
+      g_strfreev(busname_split);
+      g_free(busname);
     }
 }
 

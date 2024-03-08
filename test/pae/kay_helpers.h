@@ -604,6 +604,7 @@ struct KayTestBase : public ::testing::Test {
     t_mka_kay* ctx;
     t_mka_participant* participant;
     t_mka_peer* peer;
+    t_mka_peer* peer_secondary;
 
     t_MKA_global_config test_global_active_config = {
         .hello_time = 2000U,
@@ -709,7 +710,8 @@ struct KayTestBase : public ::testing::Test {
     KayTestBase(void) :
             ctx(&mka_kay[0]),
             participant(&ctx->participant),
-            peer(&participant->peer)
+            peer(&participant->peer),
+            peer_secondary(&participant->peer_secondary)
     {
         MKA_active_buses_config = &test_buses_active_config;
     }

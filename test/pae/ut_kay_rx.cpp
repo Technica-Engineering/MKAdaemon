@@ -803,8 +803,13 @@ TEST_F(RxBasicParmSet, PeerWithDifferentMiDiscarded)
     memcpy(&peer->sci, &bps.sci_, 8);
     memcpy(&peer->mi, &bps.mi_, sizeof(bps.mi_));
     peer->state = MKA_PEER_POTENTIAL;
+
     bps.mi_[1] ^= 0xFFU;
-    EXPECT_CALL(mocks, print_action(LoggingMessageContains("same SCI, different MI, but peer slot is occupied."), _)) .Times(1);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received MKPDU from peer with same SCI, different MI. Learning as secondary until live"), _)) .Times(1);
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    bps.mi_[1] ^= 0x55U;
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received MKPDU with same SCI, different MI, but secondary slot occupied. Discarded."), _)) .Times(1);
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
 }
 

@@ -180,7 +180,8 @@ def configure(conf):
 
     # Debug compilation
     if os.environ.get('DEBUG', False):
-        conf.env.CFLAGS += ["-Og", "-ggdb"]
+        conf.env.CFLAGS += ["-Og", "-ggdb", "-fsanitize=address", "-fsanitize=undefined"]
+        conf.env.LINKFLAGS += ["-fsanitize=address", "-fsanitize=undefined"]
 
     conf.env.DEFINES_STANDALONE += [
         "MKA_STANDALONE_COMPILATION",

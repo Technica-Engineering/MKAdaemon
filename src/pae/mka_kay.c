@@ -140,11 +140,18 @@ void MKA_KAY_MainFunctionTimers(t_MKA_bus bus)
     }
     else {
         t_mka_peer const*const peer = &participant->peer;
+        t_mka_peer *const peer_secondary = &participant->peer_secondary;
 
         if (mka_timer_expired(&peer->expiry)) {
             MKA_LOG_INFO("KaY/%i: %s peer timed out.", bus,
                 (MKA_PEER_POTENTIAL == peer->state) ? "Potential" : "Live");
             mka_peer_cleanup(bus);
+        }
+
+        if (mka_timer_expired(&peer_secondary->expiry)) {
+            MKA_LOG_INFO("KaY/%i: Secondary peer timed out.", bus);
+            mka_timer_stop(&peer_secondary->expiry);
+            memset(peer_secondary, 0, sizeof(*peer_secondary));
         }
 
         if (mka_timer_expired(&participant->mka_life) && (MKA_PEER_NONE == peer->state)) {
@@ -503,6 +510,7 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
     t_mka_peer*const peer = &participant->peer;
     t_mka_peer_state initial_peer_state = peer->state;
     uint32_t offset = sizeof(t_MKA_l2_ether_header)+sizeof(t_mka_eapol_header);
+    bool main_peer = true; // secondary peer: quick renegotiation after peer resets its MI
     bool header_presence[256U];
     bool continue_process;
     uint16_t param_type = 0U;
@@ -515,12 +523,12 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
     uint32_t xpn_l_high = 0U;
     uint32_t xpn_o_high = 0U;
 
-    { // Basic Parameter Set is always first
-        //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
-        t_mka_basic_parameter_set const*const bps = (t_mka_basic_parameter_set const*)&packet[offset];
-        offset += sizeof(t_mka_param_generic) + MKA_ALIGN_TO_32BIT(((uint32_t)bps->length << 8U) + (uint32_t)bps->length_cont);
-        continue_process = mka_handle_basic_parameter_set(bus, bps);
-    }
+    // Basic Parameter Set is always first
+    //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
+    t_mka_basic_parameter_set const*const bps = (t_mka_basic_parameter_set const*)&packet[offset];
+    offset += sizeof(t_mka_param_generic) + MKA_ALIGN_TO_32BIT(((uint32_t)bps->length << 8U) + (uint32_t)bps->length_cont);
+    continue_process = mka_handle_basic_parameter_set(bus, bps);
+    main_peer = MKA_mi_equal(peer->mi, bps->actor_mi);
 
     /* Re-evaluate in what remote list we are listed, based on the processing
      * of potential/live peer lists below, which must be populated right after
@@ -548,10 +556,12 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
         else {
             switch(param_type) {
             case PARAMETER_LIVE_PEER_LIST:
-                continue_process = mka_handle_peer_list(bus, &packet[offset], param_len, MKA_PEER_LIVE);
+                continue_process = mka_handle_peer_list(bus, &packet[offset], param_len, main_peer, MKA_PEER_LIVE);
+                main_peer = MKA_mi_equal(peer->mi, bps->actor_mi); // re-evaluate
                 break;
             case PARAMETER_POTENTIAL_PEER_LIST:
-                continue_process = mka_handle_peer_list(bus, &packet[offset], param_len, MKA_PEER_POTENTIAL);
+                continue_process = mka_handle_peer_list(bus, &packet[offset], param_len, main_peer, MKA_PEER_POTENTIAL);
+                main_peer = MKA_mi_equal(peer->mi, bps->actor_mi); // re-evaluate
                 break;
             case PARAMETER_SAK_USE:
                 // if we are not key server, a SAK USE parameter could be meaningless unless
@@ -569,11 +579,15 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
                 break;
 
             case PARAMETER_ANNOUNCEMENT:
-                continue_process = mka_handle_announcements(bus, &packet[offset], param_len);
+                if (main_peer) {
+                    continue_process = mka_handle_announcements(bus, &packet[offset], param_len);
+                }
                 break;
 
             case PARAMETER_XPN:
-                continue_process = mka_handle_xpn(bus, &packet[offset], param_len, &xpn_o_high, &xpn_l_high);
+                if (main_peer) {
+                    continue_process = mka_handle_xpn(bus, &packet[offset], param_len, &xpn_o_high, &xpn_l_high);
+                }
                 break;
 
             case PARAMETER_DISTRIBUTED_CAK:
@@ -595,6 +609,13 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
             header_presence[param_type] = true;
             offset += sizeof(t_mka_param_generic) + MKA_ALIGN_TO_32BIT(param_len);
         }
+    }
+
+    // case 'secondary' peer has not become 'main' peer at this point
+    if (!main_peer) {
+        // does not make sense to continue processing, discard all logic past this point,
+        // (DIST SAK/SAK USE). its life timer is already updated while processing basic parameter set
+        continue_process = false;
     }
 
     // Conditions to not perform MACsec cipher suite negotiation, after all parameters are handled
@@ -886,6 +907,8 @@ void mka_participant_cleanup(t_MKA_bus bus)
 
     mka_timer_stop(&participant->mka_life);
     mka_peer_cleanup(bus);
+    memset(&participant->peer_secondary, 0, sizeof(participant->peer_secondary));
+    mka_timer_init(&participant->peer_secondary.expiry);
 
     mka_timer_init(&participant_cak_life);
     mka_timer_init(&participant_mka_life);
@@ -916,6 +939,8 @@ void mka_new_participant_mi(t_MKA_bus bus)
 
     // Clear participant's peer
     mka_peer_cleanup(bus);
+    memset(&participant->peer_secondary, 0, sizeof(participant->peer_secondary));
+    mka_timer_init(&participant->peer_secondary.expiry);
 
     MKA_ASSERT(MKA_GetRandomBytes(sizeof(participant->mi), participant->mi), "Cannot generate random numbers");
 
@@ -1044,7 +1069,11 @@ t_MKA_sak* mka_find_key(t_MKA_bus bus, uint8_t const* mi, uint32_t kn)
     t_mka_participant*const participant = &ctx->participant;
     t_MKA_sak* sak;
 
-    if (MKA_mi_equal(participant->new_sak.identifier.mi, mi) &&
+    // Case call from CP with empty key, prevent referencing internal kay structures
+    if (MKA_is_mi_null(mi) && (0U == kn)) {
+        sak = NULL;
+    }
+    else if (MKA_mi_equal(participant->new_sak.identifier.mi, mi) &&
             (participant->new_sak.identifier.kn == kn)) {
         sak = &participant->new_sak;
     }
@@ -1137,7 +1166,7 @@ void MKA_KAY_DeleteSAs(t_MKA_bus bus, t_MKA_ki const* ki)
     }
 
     // CP is erasing SA associated to current SAK, we just completed a key rotation
-    if ((key == &participant->current_sak) || (NULL == key)) {
+    if (key == &participant->current_sak) {
         memcpy(&participant->current_sak, &participant->new_sak, sizeof(t_MKA_sak));
         memset(&participant->new_sak, 0, sizeof(t_MKA_sak));
     }
