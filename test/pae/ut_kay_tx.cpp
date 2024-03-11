@@ -407,7 +407,7 @@ TEST_F(TxBasic, MnIncreasesAndICVupdates)
 
     // Modify MN to expect the next one, this corresponds to byte 45 (see pcap of test with wireshark)
     ++frame[45];
-    
+
     EXPECT_CALL(mocks, MKA_ComputeICV(
             /* alg. ag  */  MKA_ALGORITHM_AGILITY,
             /* ICK      */  &mka_kay[0].participant.ick,
@@ -622,6 +622,138 @@ TEST_F(TxPeerList, NewPeerTransitionsToLive)
     ASSERT_THAT(lpeers.mi_, MemoryWith<uint8_t>({6, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 1}));
     ASSERT_THAT(lpeers.mn_, Eq(0x10AU));
 }
+
+TEST_F(TxPeerList, SecondaryPeerLearntAsPotential)
+{
+    ctx->role = MKA_ROLE_FORCE_KEY_CLIENT; // Configure kay as key client, easier to test and not relevant
+    HandleTransmission();
+    layersReset();
+    SetPresentLayers(M_PPEERS);
+
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("New potential peer"), _)) .Times(1);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("New live peer"), _)) .Times(1);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Elected principal actor"), _)) .Times(AnyNumber());
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Elected peer as key server."), _)) .Times(1);
+    EXPECT_CALL(mocks, MKA_CP_SetElectedSelf(0, false));
+    EXPECT_CALL(mocks, MKA_CP_SignalChgdServer(0));
+    EXPECT_CALL(mocks, MKA_LOGON_SetKayConnectMode(0, MKA_SECURED));
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    rx_mn = 1U;
+    bps.mi_[11] = 5U;
+    SetPresentLayers(M_NONE);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received MKPDU from peer with same SCI, different MI. Learning as secondary until live"), _));
+    // transmission expected due to new potential peer
+    HandlePreTransmission(/*handle_icv*/true, /*handle_rx*/false);
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    HandleTransmission();
+    ExpectPresentLayers(M_LPEERS + M_PPEERS);
+
+    ASSERT_THAT(ppeers.mi_, MemoryWith<uint8_t>({6, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 5}));
+    ASSERT_THAT(ppeers.mn_, Eq(1U));
+    ASSERT_THAT(lpeers.mi_, MemoryWith<uint8_t>({6, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 1}));
+    ASSERT_THAT(lpeers.mn_, Eq(0x10AU));
+}
+
+TEST_F(TxPeerList, SecondaryPeerTimeout)
+{
+    ctx->role = MKA_ROLE_FORCE_KEY_CLIENT; // Configure kay as key client, easier to test and not relevant
+    HandleTransmission();
+    layersReset();
+    SetPresentLayers(M_PPEERS);
+
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("New potential peer"), _)) .Times(1);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("New live peer"), _)) .Times(1);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Elected principal actor"), _)) .Times(AnyNumber());
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Elected peer as key server."), _)) .Times(1);
+    EXPECT_CALL(mocks, MKA_CP_SetElectedSelf(0, false));
+    EXPECT_CALL(mocks, MKA_CP_SignalChgdServer(0));
+    EXPECT_CALL(mocks, MKA_LOGON_SetKayConnectMode(0, MKA_SECURED));
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    uint32_t const old_mn = rx_mn;
+    rx_mn = 1U;
+    bps.mi_[11] ^= 5U;
+    SetPresentLayers(M_NONE);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received MKPDU from peer with same SCI, different MI. Learning as secondary until live"), _));
+    // transmission expected due to new potential peer
+    HandlePreTransmission(/*handle_icv*/true, /*handle_rx*/false);
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    //HandleTransmission();
+    ExpectPresentLayers(M_LPEERS + M_PPEERS);
+
+    ASSERT_THAT(ppeers.mi_, MemoryWith<uint8_t>({6, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 4}));
+    ASSERT_THAT(ppeers.mn_, Eq(1U));
+    ASSERT_THAT(lpeers.mi_, MemoryWith<uint8_t>({6, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 1}));
+    ASSERT_THAT(lpeers.mn_, Eq(0x10AU));
+
+    mka_tick_time_ms += 3000U;
+
+    // refresh primary
+    rx_mn = old_mn;
+    layersReset();
+    /* bps.mi_[11] ^= 5U; */
+    bps.key_server_ = true;
+    lpeers.mn_ = 2U;
+    SetPresentLayers(M_LPEERS);
+    HandlePreTransmission(/*handle_icv*/true, /*handle_rx*/false);
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    mka_tick_time_ms += 3000U;
+
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Secondary peer timed out"), _));
+    HandleTransmission();
+    ExpectPresentLayers(M_LPEERS);
+    ASSERT_THAT(lpeers.mi_, MemoryWith<uint8_t>({6, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 1}));
+    ASSERT_THAT(lpeers.mn_, Eq(0x10BU));
+}
+
+TEST_F(TxPeerList, SecondaryPeerReplacesPrimary)
+{
+    ctx->role = MKA_ROLE_FORCE_KEY_CLIENT; // Configure kay as key client, easier to test and not relevant
+    HandleTransmission();
+    layersReset();
+    SetPresentLayers(M_PPEERS);
+
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("New potential peer"), _)) .Times(1);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("New live peer"), _)) .Times(1);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Elected principal actor"), _)) .Times(AnyNumber());
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Elected peer as key server."), _)) .Times(1);
+    EXPECT_CALL(mocks, MKA_CP_SetElectedSelf(0, false));
+    EXPECT_CALL(mocks, MKA_CP_SignalChgdServer(0));
+    EXPECT_CALL(mocks, MKA_LOGON_SetKayConnectMode(0, MKA_SECURED));
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    rx_mn = 1U;
+    bps.mi_[11] = 5U;
+    SetPresentLayers(M_PPEERS);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received MKPDU from peer with same SCI, different MI. Learning as secondary until live"), _));
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Secondary peer is live. Replacing primary"), _));
+    EXPECT_CALL(mocks, MKA_LOGON_SetKayConnectMode(0, MKA_PENDING));
+    EXPECT_CALL(mocks, MKA_CP_SetUsingTransmitSA(0, true));
+    EXPECT_CALL(mocks, MKA_CP_SetUsingReceiveSAs(0, true));
+
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("New live peer"), _)) .Times(1);
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Elected principal actor"), _)) .Times(AnyNumber());
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Elected peer as key server."), _)) .Times(1);
+    EXPECT_CALL(mocks, MKA_CP_SetElectedSelf(0, false));
+    EXPECT_CALL(mocks, MKA_CP_SignalChgdServer(0));
+    EXPECT_CALL(mocks, MKA_LOGON_SetKayConnectMode(0, MKA_SECURED));
+
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Live peer did not sent peer live list. Presence timers not updated."), _));
+
+    HandlePreTransmission(/*handle_icv*/true, /*handle_rx*/false);
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    HandleTransmission();
+    ExpectPresentLayers(M_LPEERS);
+
+    ASSERT_THAT(lpeers.mi_, MemoryWith<uint8_t>({6, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 5}));
+    ASSERT_THAT(lpeers.mn_, Eq(1U));
+}
+
 
 TEST_F(TxDistSak, MetaTest)
 {
@@ -1288,7 +1420,7 @@ TEST_F(TxWhenClient, InstallSak)
                 /* tx       */ true,
                 /* rx       */ true
             )) .WillOnce(Return((void*)0x994212));
-    
+
     EXPECT_CALL(mocks, MKA_CP_SetCipherSuite(0, MKA_CS_ID_GCM_AES_128));
     EXPECT_CALL(mocks, MKA_CP_SetCipherOffset(0, MKA_CONFIDENTIALITY_OFFSET_0));
     EXPECT_CALL(mocks, MKA_CP_SetDistributedKI(0, ObjectMatch(identifier)));

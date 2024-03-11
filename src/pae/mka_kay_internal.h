@@ -188,6 +188,9 @@ typedef struct {
     // Peer
     t_mka_peer          peer;
 
+    // backport: potential peer for quick renegotiation after remote MI reset, without full multipeer
+    t_mka_peer          peer_secondary;
+
     // Life time
     t_mka_timer         cak_life;
     t_mka_timer         mka_life;
@@ -403,7 +406,7 @@ bool mka_mkpdu_verify(t_MKA_bus bus, uint8_t const*packet, uint32_t *length);
 void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length);
 bool mka_handle_basic_parameter_set(t_MKA_bus bus, t_mka_basic_parameter_set const*bps);
 bool mka_encode_basic_parameter_set(t_MKA_bus bus, uint8_t *packet, uint32_t *length);
-bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, t_mka_peer_state type);
+bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, bool main_peer, t_mka_peer_state type);
 bool mka_encode_peer_list(t_MKA_bus bus, uint8_t *packet, uint32_t *length);
 bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, uint32_t xpn_o_high, uint32_t xpn_l_high);
 bool mka_encode_sak_use(t_MKA_bus bus, uint8_t *packet, uint32_t *length);

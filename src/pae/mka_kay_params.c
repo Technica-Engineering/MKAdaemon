@@ -199,19 +199,21 @@ bool mka_handle_basic_parameter_set(t_MKA_bus bus, t_mka_basic_parameter_set con
     t_mka_kay*const ctx = &mka_kay[bus];
     t_mka_participant*const participant = &ctx->participant;
     t_mka_peer *const peer = &participant->peer;
+    t_mka_peer *const peer_secondary = &participant->peer_secondary;
 
     // Comparisons for evaluating colliding MI
     bool const is_sci_addr_same_mine = (0 == memcmp(bps->sci.addr, ctx->actor_sci.addr, MKA_L2_ADDR_SIZE));
     bool const is_mi_same_mine = MKA_mi_equal(participant->mi, bps->actor_mi);
+    bool const peer_mi_match = MKA_mi_equal(peer->mi, bps->actor_mi);
 
     // Role verification, enforced when there's a relation with peer
-    if ((MKA_ROLE_FORCE_KEY_SERVER == ctx->role) && (1U == bps->key_server) && (MKA_PEER_NONE != peer->state)) {
+    if ((MKA_ROLE_FORCE_KEY_SERVER == ctx->role) && (1U == bps->key_server) && (MKA_PEER_NONE != peer->state) && peer_mi_match) {
         MKA_LOG_WARNING("KaY/%i: Configured as Key Server, received packet from a Key Server. Discarded.", bus);
         continue_process = false;
     }
 
     // Role verification, enforced when there's a relation with peer
-    if ((MKA_ROLE_FORCE_KEY_CLIENT == ctx->role) && (0U == bps->key_server) && (MKA_PEER_NONE != peer->state)) {
+    if ((MKA_ROLE_FORCE_KEY_CLIENT == ctx->role) && (0U == bps->key_server) && (MKA_PEER_NONE != peer->state) && peer_mi_match) {
         MKA_LOG_WARNING("KaY/%i: Configured as non Key Server, received packet from a non Key Server. Discarded.", bus);
         continue_process = false;
     }
@@ -260,9 +262,52 @@ bool mka_handle_basic_parameter_set(t_MKA_bus bus, t_mka_basic_parameter_set con
         continue_process = false;
 
     } // Case MI differs
-    else if (!MKA_mi_equal(peer->mi, bps->actor_mi)) {
-        MKA_LOG_INFO("KaY/%i: Received MKPDU from peer with same SCI, different MI, but peer slot is occupied. Discarded.", bus);
-        continue_process = false;
+    else if (!peer_mi_match) {
+        if (MKA_PEER_NONE == peer_secondary->state) {
+            MKA_LOG_INFO("KaY/%i: Received MKPDU from peer with same SCI, different MI. Learning as secondary until live.", bus);
+
+            // Register. It is now a potential peer
+            memcpy(peer_secondary->sci.addr, bps->sci.addr, MKA_L2_ADDR_SIZE);
+            peer_secondary->sci.port = MKA_NTOHS(bps->sci.port);
+            memcpy(peer_secondary->mi, bps->actor_mi, MKA_MI_LENGTH);
+            peer_secondary->mn = MKA_NTOHL(bps->actor_mn);
+            peer_secondary->key_server = (bps->key_server > 0U);
+            peer_secondary->key_server_priority = bps->priority;
+            peer_secondary->macsec_desired = (bps->macsec_desired > 0U);
+            //lint -e{9030} [MISRA 2012 Rule 10.5, advisory] Casting 2-bit number to 4-value enum is controlled, values match to enum's
+            //lint -e{9034} [MISRA 2012 Rule 10.3, required] Casting 2-bit number to 4-value enum is controlled, values match to enum's
+            peer_secondary->macsec_capability = (t_MKA_macsec_cap)bps->macsec_capability;
+            //lint -e{9030} [MISRA 2012 Rule 10.5, advisory] Casting 2-bit number to 4-value enum is controlled, values match to enum's
+            //lint -e{9034} [MISRA 2012 Rule 10.3, required] Casting 2-bit number to 4-value enum is controlled, values match to enum's
+            peer_secondary->compatible_capability = (t_MKA_macsec_cap)bps->macsec_capability;
+            peer_secondary->state = MKA_PEER_POTENTIAL;
+
+            ctx->new_info = true; // Speed up handshake
+            mka_timer_start(&peer_secondary->expiry, MKA_active_global_config->life_time);
+
+        } // Repeated Message Number
+        else if (peer_secondary->mn >= MKA_NTOHL(bps->actor_mn)) {
+            MKA_LOG_WARNING("KaY/%i: Received MKPDU from secondary peer with lower MN than expected. Discarded.", bus);
+            continue_process = false;
+        }
+        else if (MKA_mi_equal(peer_secondary->mi, bps->actor_mi)) {
+            peer_secondary->mn = MKA_NTOHL(bps->actor_mn);
+            peer_secondary->key_server = (bps->key_server > 0U);
+            peer_secondary->key_server_priority = bps->priority;
+            peer_secondary->macsec_desired = (bps->macsec_desired > 0U);
+            //lint -e{9030} [MISRA 2012 Rule 10.5, advisory] Casting 2-bit number to 4-value enum is controlled, values match to enum's
+            //lint -e{9034} [MISRA 2012 Rule 10.3, required] Casting 2-bit number to 4-value enum is controlled, values match to enum's
+            peer_secondary->macsec_capability = (t_MKA_macsec_cap)bps->macsec_capability;
+            //lint -e{9030} [MISRA 2012 Rule 10.5, advisory] Casting 2-bit number to 4-value enum is controlled, values match to enum's
+            //lint -e{9034} [MISRA 2012 Rule 10.3, required] Casting 2-bit number to 4-value enum is controlled, values match to enum's
+            peer_secondary->compatible_capability = (t_MKA_macsec_cap)bps->macsec_capability;
+
+            mka_timer_start(&peer_secondary->expiry, MKA_active_global_config->life_time);
+        }
+        else {
+            MKA_LOG_INFO("KaY/%i: Received MKPDU with same SCI, different MI, but secondary slot occupied. Discarded.", bus);
+            continue_process = false;
+        }
 
     } // Repeated Message Number
     else if (peer->mn >= MKA_NTOHL(bps->actor_mn)) {
@@ -347,11 +392,12 @@ bool mka_encode_basic_parameter_set(t_MKA_bus bus, uint8_t *packet, uint32_t *le
     return continue_process;
 }
 
-bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, t_mka_peer_state type)
+bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, bool main_peer, t_mka_peer_state type)
 {
     t_mka_kay*const ctx = &mka_kay[bus];
     t_mka_participant*const participant = &ctx->participant;
     t_mka_peer*const peer = &participant->peer;
+    t_mka_peer*const peer_secondary = &participant->peer_secondary;
     bool continue_process = true;
     bool self_seen = false;
 
@@ -392,12 +438,48 @@ bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len,
         }
     }
 
-    if (self_seen) {
+    // Case secondary peer became live
+    if (continue_process && self_seen && (MKA_PEER_POTENTIAL == peer_secondary->state) && (!main_peer)) {
+        t_MKA_ciphsuite const current_cipher = participant->cipher;
+        t_MKA_ciphsuite const current_compat_cipher = peer->compatible_cipher;
+        t_MKA_macsec_cap const current_compat_cap = peer->compatible_capability;
+
+        MKA_LOG_INFO("KaY/%i: Secondary peer is live. Replacing primary.", bus);
+        // kill main peer and any active SA/SC
+        mka_peer_cleanup(bus);
+
+        // signal connectivity change to CP via server changed
+        MKA_CP_SignalChgdServer(bus);
+
+        // temporary connection mode transition
+        mka_set_mode(bus, MKA_PENDING); // not setting FAILED here on purpose, let timer functions handle
+
+        // make sure to "unfreeze" CP from states RECEIVE and TRANSMIT
+        MKA_CP_SetUsingReceiveSAs(bus, true);
+        MKA_CP_SetUsingTransmitSA(bus, true);
+
+        // transform secondary peer into primary
+        (void)memcpy(peer, peer_secondary, sizeof(*peer));
+        (void)memset(&peer->expiry, 0, sizeof(peer->expiry));
+        mka_timer_start(&peer->expiry, MKA_active_global_config->life_time);
+
+        // secondary cleanup
+        memset(peer_secondary, 0, sizeof(*peer_secondary));
+        mka_timer_init(&peer_secondary->expiry);
+        main_peer = true;
+
+        // apply previous ciphersuite / negotiation result
+        participant->cipher = current_cipher;
+        peer->compatible_cipher = current_compat_cipher;
+        peer->compatible_capability = current_compat_cap;
+    }
+
+    if (main_peer && self_seen) {
         peer->remote_state = type;
     }
 
     // When a potential peer sees us, peer becomes live
-    if (continue_process && self_seen && (MKA_PEER_POTENTIAL == peer->state)) {
+    if (continue_process && self_seen && main_peer && (MKA_PEER_POTENTIAL == peer->state)) {
         MKA_LOG_INFO("KaY/%i: New live peer.", bus);
         peer->state = MKA_PEER_LIVE;
 
@@ -431,7 +513,7 @@ bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len,
     }
 
     // If a live peer doesn't see us, we ignore the frame
-    if (continue_process && (!self_seen) && (MKA_PEER_LIVE == peer->state) &&
+    if (continue_process && (!self_seen) && main_peer && (MKA_PEER_LIVE == peer->state) &&
                         (PARAMETER_LIVE_PEER_LIST == *param)) {
         MKA_LOG_WARNING("KaY/%i: We are not listed in our peer live list while peer is live. Discarded.", bus);
         continue_process = false;
@@ -444,11 +526,12 @@ bool mka_encode_peer_list(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
 {
     t_mka_kay const*const ctx = &mka_kay[bus];
     t_mka_participant const*const participant = &ctx->participant;
+    t_mka_peer const*const peer_secondary = &participant->peer_secondary;
     t_mka_peer const*const peer = &participant->peer;
     //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
-    t_mka_param_peer_list *const param = (t_mka_param_peer_list*)&packet[*length];
+    t_mka_param_peer_list * param = (t_mka_param_peer_list*)&packet[*length];
     //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
-    t_mka_peer_id *const param_peer = (t_mka_peer_id*)&packet[(*length) + sizeof(t_mka_param_peer_list)];
+    t_mka_peer_id * param_peer = (t_mka_peer_id*)&packet[(*length) + sizeof(t_mka_param_peer_list)];
     bool const present = (MKA_PEER_NONE != peer->state);
     bool const dist_sak_present_xpn = mka_is_cipher_xpn(participant->cipher) && (MKA_SAK_KS_DISTRIBUTING == participant->sak_state);
     bool continue_process = true;
@@ -477,6 +560,32 @@ bool mka_encode_peer_list(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
 
         memcpy(param_peer->mi, peer->mi, sizeof(peer->mi));
         param_peer->mn = MKA_HTONL(peer->mn);
+    }
+
+    //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
+    param = (t_mka_param_peer_list*)&packet[*length];
+    //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
+    param_peer = (t_mka_peer_id*)&packet[(*length) + sizeof(t_mka_param_peer_list)];
+
+    // Case not necessary to include potential peer list for quick renegotiation
+    if (!present || !continue_process || (MKA_PEER_NONE == peer_secondary->state)) {
+        // No action
+    }
+    else if (!mka_frame_account_space(length, sizeof(t_mka_param_peer_list) + sizeof(t_mka_peer_id))) {
+        MKA_LOG_WARNING("KaY/%i: Could not generate MKPDU due to Peer List encoding error.", bus);
+        continue_process = false;
+    }
+    else {
+        memset(param, 0, sizeof(t_mka_param_peer_list));
+        param->type = PARAMETER_POTENTIAL_PEER_LIST;
+        param->key_server_ssci = 0U;
+        param->unused = 0U;
+        param->length = 0U;
+        param->length_cont = 16U;
+        param->key_server_ssci = 0U;
+
+        memcpy(param_peer->mi, peer_secondary->mi, sizeof(peer_secondary->mi));
+        param_peer->mn = MKA_HTONL(peer_secondary->mn);
     }
 
     return continue_process;
@@ -880,7 +989,7 @@ bool mka_encode_sak_use(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
     uint8_t oan = 0U;
     bool    otx = false;
     bool    orx = false;
-    t_MKA_sak const*const old = mka_get_old(bus, &oan, &otx, &orx);
+    t_MKA_sak const* old = mka_get_old(bus, &oan, &otx, &orx);
     t_MKA_sak const*const latest = mka_get_latest(bus, &lan, &ltx, &lrx);
 
     //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
@@ -893,6 +1002,16 @@ bool mka_encode_sak_use(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
     bool const is_cipher_xpn = mka_is_cipher_xpn(participant->cipher);
     t_MKA_pn const exhaustion_threshold = is_cipher_xpn ?  MKA_XPN_EXHAUSTION : MKA_PN_EXHAUSTION;
     bool continue_process = true;
+
+    // NOTE: Mechanism to detect CP state RETIRE from KaY is really limited. Maybe the way is comparing
+    // oki/lki, but these are only read when encoding SAK uses. Therefore I'm going to transition KaY SAK
+    // from new_sak to current_sak here. This is not ideal, but I used to do it on calls to deleteSa() with invalid
+    // keys (first time), and that strategy seems even worse. It even has side effects when unauthenticated allowed is immediate.
+    if ((latest == NULL) && (old == &participant->new_sak)) {
+        memcpy(&participant->current_sak, &participant->new_sak, sizeof(t_MKA_sak));
+        memset(&participant->new_sak, 0, sizeof(t_MKA_sak));
+        old = &participant->current_sak; // update pointer after rotating
+    }
 
     // NOTE: Standard does not clearly states WHEN "sak use" is to be transmitted without MACSEC.
     // However, it considers the possibility of "sak use" being transmited without MACSEC, just imposes

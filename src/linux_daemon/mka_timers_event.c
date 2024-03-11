@@ -131,8 +131,8 @@ bool mka_timer_running(t_mka_timer const* const timer)
 
 bool mka_timer_expired(t_mka_timer const* const timer)
 {
-    MKA_ASSERT(NULL != timer->ref, "Attempt to call a getter on a non-initialised timer.");
-    return (mka_tick_time_ms >= timer->ref->expiry);
+    bool const initialised = (bool)(NULL != timer->ref);
+    return initialised ? (mka_tick_time_ms >= timer->ref->expiry) : false;
 }
 
 /*******************        Func. definition  ***********************/

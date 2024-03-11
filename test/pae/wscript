@@ -31,6 +31,10 @@ def test(ut):
     # Emit friendly errors.
     isinstance(ut, Build.BuildContext) or ut.fatal("Project is not configured. Please run 'python waf configure --top=../..'")
 
+    # Enable compiler sanitisers
+    for var in (ut.env.CFLAGS, ut.env.CPPFLAGS, ut.env.LDFLAGS):
+        var.extend(["-fsanitize=address", "-fsanitize=undefined"])
+
     # Every call to ut() will create a compilation of a unit test.
     ut(
         name = "cp", # --> run me with: "python waf test --targets=cp"
