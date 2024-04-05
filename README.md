@@ -9,7 +9,7 @@ Currently this daemon supports running in Linux (tested Ubuntu 20.04 and 22.04),
 
 ## 2. Licensing
 
-This software is available under two distinct licensing models: open source (GLPv2, see COPYING.txt) and standard commercial licensing.
+This software is available under two distinct licensing models: open source (GPLv2, see COPYING.txt) and standard commercial licensing.
 
 Please contact macsec@technica-engineering.de with inquiries.
 
