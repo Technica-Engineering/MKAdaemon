@@ -1325,7 +1325,6 @@ static t_MKA_result txsc_cache_update(t_MKA_bus bus){
 		return MKA_OK;
 	}
 
-	clock_gettime(CLOCK_MONOTONIC,&txsc_info_cache_timestamp);
 
 	msg = nlmsg_alloc();
 	if (!msg) {
@@ -1348,6 +1347,7 @@ static t_MKA_result txsc_cache_update(t_MKA_bus bus){
 
 out_free_msg:
 	nlmsg_free(msg);
+	clock_gettime(CLOCK_MONOTONIC,&txsc_info_cache_timestamp);
 	pthread_mutex_unlock(&txsc_info_cache_mutex);
 	if (ret == 0) return MKA_OK;
 	else return MKA_NOT_OK;
