@@ -1360,13 +1360,13 @@ t_MKA_result MKA_PHY_GetTxSANextPN(t_MKA_bus bus, uint8_t an, t_MKA_pn* next_pn)
 	if (!my_libnl_status->init_done){
 		return MKA_OK;
 	}
-	MKA_LOG_DEBUG1("Libnl adapter: MKA_PHY_GetTxSANextPN");
+	MKA_LOG_DEBUG2("Libnl adapter: MKA_PHY_GetTxSANextPN");
 
 	err = txsc_cache_update(bus);
 	pthread_mutex_lock(&txsc_info_cache_mutex);
 	*next_pn = my_libnl_status->txsc_info_cache_data.txpn;
 	pthread_mutex_unlock(&txsc_info_cache_mutex);
-	MKA_LOG_DEBUG1("%s: err %d result %d", __func__, err,
+	MKA_LOG_DEBUG2("%s: err %d result %d", __func__, err,
 		   *next_pn);
 	return err;
 }

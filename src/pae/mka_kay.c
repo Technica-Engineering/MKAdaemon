@@ -520,8 +520,6 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
     // dist sak processing delayed
     uint32_t dist_sak_offset = 0U;
     uint32_t dist_sak_length = 0U;
-    uint32_t xpn_l_high = 0U;
-    uint32_t xpn_o_high = 0U;
 
     // Basic Parameter Set is always first
     //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
@@ -585,9 +583,7 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
                 break;
 
             case PARAMETER_XPN:
-                if (main_peer) {
-                    continue_process = mka_handle_xpn(bus, &packet[offset], param_len, &xpn_o_high, &xpn_l_high);
-                }
+                // Ignore, debugging purposes only.
                 break;
 
             case PARAMETER_DISTRIBUTED_CAK:
@@ -637,24 +633,12 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
         continue_process = mka_handle_distributed_sak(bus, &packet[dist_sak_offset], dist_sak_length);
     }
 
-    // error or no sak_use present
-    if (!continue_process || (0U == sak_use_offset)) {
-        // no further action
-
-    } // XPN cipher, transmitter not sending XPN parameter
-    else if (mka_is_cipher_xpn(participant->cipher) && (!header_presence[PARAMETER_XPN])) {
-        MKA_LOG_ERROR("KaY/%i: Using XPN cipher, received SAK USE without XPN parameter. Ignored.", bus, param_type);
-        continue_process = false;
-    } // case: (No XPN) or (XPN present and handled)
-    else {
-        continue_process = mka_handle_sak_use(bus, &packet[sak_use_offset], sak_use_length, xpn_o_high, xpn_l_high);
+    if (continue_process && (0U != sak_use_offset)) {
+        continue_process = mka_handle_sak_use(bus, &packet[sak_use_offset], sak_use_length);
     }
 
     bool const sak_use_expected = continue_process && (MKA_PEER_LIVE == peer->state) && peer->transmits_sak_use;
-    bool const xpn_expected = mka_is_cipher_xpn(participant->cipher) && sak_use_expected;
-
     bool const sak_use_absence = sak_use_expected && (!header_presence[PARAMETER_SAK_USE]);
-    bool const xpn_absence = xpn_expected && (!header_presence[PARAMETER_XPN]);
 
     // Error happened
     if (!continue_process) {
@@ -663,11 +647,6 @@ void mka_handle_mkpdu(t_MKA_bus bus, uint8_t const*packet, uint32_t length)
     }
     else if (sak_use_absence) {
         MKA_LOG_WARNING("KaY/%i: Live peer did not sent SAK USE. Timers not updated.", bus);
-        // No further action
-
-    }
-    else if (xpn_absence) {
-        MKA_LOG_WARNING("KaY/%i: Live peer did not sent XPN along with SAK USE. Timers not updated.", bus);
         // No further action
 
     } // A live peer did not send a live peer list (doesn't see us as live)

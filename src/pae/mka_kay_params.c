@@ -833,7 +833,7 @@ bool mka_encode_distributed_sak(t_MKA_bus bus, uint8_t *packet, uint32_t *length
     return continue_process;
 }
 
-bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, uint32_t xpn_o_high, uint32_t xpn_l_high)
+bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len)
 {
     // TODO: handle plain_tx // plain_rx!
     t_mka_kay*const ctx = &mka_kay[bus];
@@ -884,13 +884,13 @@ bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, u
             continue_process = false;
         }
         else if ((0U == /* NOTE! 0 is endian-invariant! */ content->old_laccpn) &&
-                 (!is_cipher_xpn || (0U == xpn_o_high))) {
+                 (!is_cipher_xpn || (0U == osak->next_pn))) {
             MKA_LOG_ERROR("KaY/%i: Received SAK USE with 0 as Old Key Lowest Acceptable PN. Discarded.", bus);
             continue_process = false;
         }
         else {
-            osak->next_pn = ((t_MKA_ciphsuite)xpn_o_high) << 32U;
-            osak->next_pn |= MKA_NTOHL(content->old_laccpn);
+            mka_update_laccpn_xpn_logic(osak, MKA_NTOHL(content->old_laccpn));
+
             if ((content->delay_protect > 0U) && (NULL != osak->rxsa)) {
                 MKA_SECY_ReceiveSA_UpdateNextPN(bus, osak->rxsa, osak->next_pn);
             }
@@ -905,17 +905,17 @@ bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, u
             continue_process = false;
         }
         else if ((0U == /* NOTE! 0 is endian-invariant! */ content->latest_laccpn) &&
-                 (!is_cipher_xpn || (0U == xpn_l_high))) {
+                 (!is_cipher_xpn || (0U == lsak->next_pn))) {
             MKA_LOG_ERROR("KaY/%i: Received SAK USE with 0 as Latest Key Lowest Acceptable PN. Discarded.", bus);
             continue_process = false;
         }
         else {
-            lsak->next_pn = ((t_MKA_ciphsuite)xpn_l_high) << 32U;
-            lsak->next_pn |= MKA_NTOHL(content->latest_laccpn);
+            mka_update_laccpn_xpn_logic(lsak, MKA_NTOHL(content->latest_laccpn));
+
             if ((content->delay_protect > 0U) && (NULL != lsak->rxsa)) {
                 MKA_SECY_ReceiveSA_UpdateNextPN(bus, lsak->rxsa, lsak->next_pn);
             }
-            new_sak = (lsak == &participant->new_sak) ? osak : NULL;
+            new_sak = (lsak == &participant->new_sak) ? lsak : NULL;
         }
 
         if (osak == newest_sak) {
@@ -1272,39 +1272,6 @@ bool mka_encode_announcements(t_MKA_bus bus, uint8_t *packet, uint32_t *length)
         tlv_length -= 2U;
         packet[   octet_length_start] |= (uint8_t)(tlv_length >> 8U) & 1U;
         packet[1U+octet_length_start] |= (uint8_t)tlv_length & 0xFFU;
-    }
-
-    return continue_process;
-}
-
-bool mka_handle_xpn(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, uint32_t*xpn_o_high, uint32_t*xpn_l_high)
-{
-    t_mka_kay const*const ctx = &mka_kay[bus];
-    t_mka_participant const*const participant = &ctx->participant;
-    t_mka_peer const*const peer = &participant->peer;
-    //lint -e{9087, 826} [MISRA 2012 Rule 11.3, required] Pointer cast controlled; packed struct representing network data
-    t_mka_xpn const*const content = (t_mka_xpn const*)param;
-    bool const is_cipher_xpn = mka_is_cipher_xpn(participant->cipher);
-    bool continue_process = true;
-
-    // Non-live peer
-    if (MKA_PEER_LIVE != peer->state) {
-        MKA_LOG_WARNING("KaY/%i: Received XPN from non-live peer. Ignored.", bus);
-        continue_process = false;
-
-    } // Invalid parameter length
-    else if (body_len < 8U) {
-        MKA_LOG_ERROR("KaY/%i: Peer transmitting XPN parameter smaller than minimum of 8 bytes, handling aborted.", bus);
-        continue_process = false;
-
-    } // IEE802.1X-2020 Transmitted as zero and ignored on receipt, if the MACsec C.S. does not use XPN.
-    else if (!is_cipher_xpn) {
-        MKA_LOG_DEBUG1("KaY/%i: Peer transmits XPN, but XPN cipher is not being used. Silently ignored.", bus);
-
-    } // All good, read 32-bit high part of packet numbers
-    else {
-        *xpn_o_high = MKA_NTOHL(content->old_laccpn_high);
-        *xpn_l_high = MKA_NTOHL(content->latest_laccpn_high);
     }
 
     return continue_process;
