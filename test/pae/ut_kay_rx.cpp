@@ -1100,147 +1100,48 @@ TEST_F(RxXPN, MetaTest)
 {
 }
 
-TEST_F(RxXPN, ErrorNonLivePeer)
+TEST_F(RxXPN, IncreaseXPNforPacketNumberOld)
 {
-    EXPECT_CALL(mocks, print_action(LoggingMessageContains("New potential peer"), _)) .Times(1);
-    peer->state = MKA_PEER_NONE;
-    lpeers.present_ = false;
-
-    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received XPN from non-live peer"), _)) .Times(1);
-    FeedFrame(/*serialise*/true, /*handle_icv*/true);
-}
-
-TEST_F(RxXPN, ErrorInvalidLength_7)
-{
-    xpn.invalid_sz_ = 7;
-    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Peer transmitting XPN parameter smaller than minimum of 8 bytes"), _)) .Times(1);
-    FeedFrame(/*serialise*/true, /*handle_icv*/true);
-}
-
-TEST_F(RxXPN, DebugMessageNoXPN)
-{
-    participant->cipher = MKA_CS_ID_GCM_AES_256;
-    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Peer transmits XPN, but XPN cipher is not being used. Silently ignored"), _)) .Times(1);
-
-    FeedFrame(/*serialise*/true, /*handle_icv*/true);
-}
-
-TEST_F(RxXPN, IgnoredWithNoXpnCipher)
-{
-    participant->cipher = MKA_CS_ID_GCM_AES_256;
-
-    xpn.l_hpn = 0x11112222U;
-    xpn.o_hpn = 0x33334444U;
-
-    memset(sakuse.lmi_, 0, sizeof(sakuse.omi_)); // Set invalid key in old slot so it doesnt interfere
-    sakuse.delay_prot_ = true;
-    sakuse.opn_ = 0x11223344U;
-    participant->sak_state = MKA_SAK_INSTALLED;
-    memcpy(&participant->current_sak, &participant->new_sak, sizeof(participant->new_sak));
-    memset(&participant->new_sak, 0, sizeof(participant->new_sak));
-    participant->current_sak.rxsa = &rxsa;
-
-    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Peer transmits XPN, but XPN cipher is not being used. Silently ignored"), _)) .Times(1);
-
-    // Expecting SCI reporting ignoring extended packet number
-    EXPECT_CALL(mocks, MKA_SECY_ReceiveSA_UpdateNextPN(0U, participant->current_sak.rxsa, 0x3333444411223344ULL)) .Times(0);
-    EXPECT_CALL(mocks, MKA_SECY_ReceiveSA_UpdateNextPN(0U, participant->current_sak.rxsa, 0x11223344ULL)) .Times(1);
-
-    FeedFrame(/*serialise*/true, /*handle_icv*/true);
-
-    // Internally storing without extended packet number
-    ASSERT_THAT(participant->current_sak.next_pn, Eq(0x11223344ULL));
-}
-
-TEST_F(RxXPN, UpdatesToSCILatest)
-{
-    xpn.l_hpn = 0x11112222U;
-    xpn.o_hpn = 0x33334444U;
-
-    memset(sakuse.lmi_, 0, sizeof(sakuse.omi_)); // Set invalid key in old slot so it doesnt interfere
-    sakuse.delay_prot_ = true;
-    sakuse.opn_ = 0x11223344U;
-    participant->sak_state = MKA_SAK_INSTALLED;
-    memcpy(&participant->current_sak, &participant->new_sak, sizeof(participant->new_sak));
-    memset(&participant->new_sak, 0, sizeof(participant->new_sak));
-    participant->current_sak.rxsa = &rxsa;
-
-    // Expecting SCI reporting with extended packet number
-    EXPECT_CALL(mocks, MKA_SECY_ReceiveSA_UpdateNextPN(0U, participant->current_sak.rxsa, 0x3333444411223344ULL));
-
-    FeedFrame(/*serialise*/true, /*handle_icv*/true);
-
-    // Internally storing extended packet number
-    ASSERT_THAT(participant->current_sak.next_pn, Eq(0x3333444411223344ULL));
-}
-
-TEST_F(RxXPN, UpdatesToSCIOld)
-{
-    xpn.l_hpn = 0x11112222U;
-    xpn.o_hpn = 0x33334444U;
-
-    memset(sakuse.omi_, 0, sizeof(sakuse.omi_)); // Set invalid key in old slot so it doesnt interfere
-    sakuse.delay_prot_ = true;
-    sakuse.lpn_ = 0x55443322U;
-    participant->sak_state = MKA_SAK_INSTALLED;
-    memset(&participant->current_sak, 0, sizeof(participant->new_sak));
-    participant->new_sak.rxsa = &rxsa;
-
-    // Expecting SCI reporting with extended packet number
-    EXPECT_CALL(mocks, MKA_SECY_ReceiveSA_UpdateNextPN(0U, participant->new_sak.rxsa, 0x1111222255443322ULL));
-
-    FeedFrame(/*serialise*/true, /*handle_icv*/true);
-
-    // Internally storing extended packet number
-    ASSERT_THAT(participant->new_sak.next_pn, Eq(0x1111222255443322ULL));
-}
-
-TEST_F(RxXPN, NullLowestPacketNumberOld)
-{
-    memset(sakuse.omi_, 0, sizeof(sakuse.omi_)); // Set invalid key in old slot so it doesnt interfere
-    xpn.l_hpn = 0x00000001U;
-    sakuse.lpn_ = 0x00000000U;
+    memset(sakuse.lmi_, 0, sizeof(sakuse.lmi_)); // Set invalid key in latest slot so it doesnt interfere
+    sakuse.opn_ = 0xFFFFFF00U;
     participant->sak_state = MKA_SAK_INSTALLED;
     memcpy(&participant->current_sak, &participant->new_sak, sizeof(participant->new_sak));
     memset(&participant->new_sak, 0, sizeof(participant->new_sak));
 
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
-}
+    ASSERT_THAT(participant->current_sak.next_pn, Eq(0x00000000FFFFFF00UL));
 
-TEST_F(RxXPN, NullLowestPacketNumberLatest)
-{
-    memset(sakuse.lmi_, 0, sizeof(sakuse.lmi_)); // Set invalid key in old slot so it doesnt interfere
-    xpn.o_hpn = 0x00000001U;
     sakuse.opn_ = 0x00000000U;
-    participant->sak_state = MKA_SAK_INSTALLED;
-    memset(&participant->current_sak, 0, sizeof(participant->new_sak));
 
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
-}
+    ASSERT_THAT(participant->current_sak.next_pn, Eq(0x0000000100000000UL));
 
-TEST_F(RxXPN, NullExtendedPacketNumberOld)
-{
-    memset(sakuse.lmi_, 0, sizeof(sakuse.lmi_)); // Set invalid key in old slot so it doesnt interfere
-    xpn.o_hpn = 0x00000000U;
-    sakuse.opn_ = 0x00000000U;
-    participant->sak_state = MKA_SAK_INSTALLED;
-    memset(&participant->current_sak, 0, sizeof(participant->new_sak));
-    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received SAK USE with 0 as Old Key Lowest Acceptable PN."), _));
+    sakuse.opn_ = 0x00000001U;
 
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
+    ASSERT_THAT(participant->current_sak.next_pn, Eq(0x0000000100000001UL));
 }
 
-TEST_F(RxXPN, NullExtendedPacketNumberLatest)
+TEST_F(RxXPN, IncreaseXPNforPacketNumberLatest)
 {
     memset(sakuse.omi_, 0, sizeof(sakuse.omi_)); // Set invalid key in old slot so it doesnt interfere
-    xpn.l_hpn = 0x00000000U;
-    sakuse.lpn_ = 0x00000000U;
+    sakuse.lpn_ = 0xFFFFFF00U;
     participant->sak_state = MKA_SAK_INSTALLED;
     memcpy(&participant->current_sak, &participant->new_sak, sizeof(participant->new_sak));
     memset(&participant->new_sak, 0, sizeof(participant->new_sak));
-    EXPECT_CALL(mocks, print_action(LoggingMessageContains("Received SAK USE with 0 as Latest Key Lowest Acceptable PN."), _));
 
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
+    ASSERT_THAT(participant->current_sak.next_pn, Eq(0x00000000FFFFFF00UL));
+
+    sakuse.lpn_ = 0x00000000U;
+
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+    ASSERT_THAT(participant->current_sak.next_pn, Eq(0x0000000100000000UL));
+
+    sakuse.lpn_ = 0x00000001U;
+
+    FeedFrame(/*serialise*/true, /*handle_icv*/true);
+    ASSERT_THAT(participant->current_sak.next_pn, Eq(0x0000000100000001UL));
 }
 
 TEST_F(RxXPN, ExtendedExhaustion)
@@ -1254,12 +1155,12 @@ TEST_F(RxXPN, ExtendedExhaustion)
 
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
 
-    xpn.l_hpn = 0xBFFFFFFFU;
+    participant->current_sak.next_pn = 0xBFFFFFFF00000000UL;
     sakuse.lpn_ = 0xFFFFFFFFUL;
 
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
 
-    xpn.l_hpn = 0xC0000000U;
+    ASSERT_THAT(participant->current_sak.next_pn, Eq(0xBFFFFFFFFFFFFFFFULL));
     sakuse.lpn_ = 0x00000000ULL;
 
     EXPECT_CALL(mocks, print_action(LoggingMessageContains("Peer reached PN exhaustion"), _)) .Times(1);
@@ -1269,6 +1170,8 @@ TEST_F(RxXPN, ExtendedExhaustion)
     EXPECT_CALL(mocks, MKA_GetRandomBytes(32, _)) .WillOnce(DoAll(MemcpyToArg<1>((void*)ks_nonce, 32), Return(false)));
 
     FeedFrame(/*serialise*/true, /*handle_icv*/true);
+
+    ASSERT_THAT(participant->current_sak.next_pn, Eq(0xC000000000000000ULL));
 }
 
 TEST_F(RxDistSak, MetaTest)

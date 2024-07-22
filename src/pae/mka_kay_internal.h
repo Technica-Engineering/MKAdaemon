@@ -408,11 +408,10 @@ bool mka_handle_basic_parameter_set(t_MKA_bus bus, t_mka_basic_parameter_set con
 bool mka_encode_basic_parameter_set(t_MKA_bus bus, uint8_t *packet, uint32_t *length);
 bool mka_handle_peer_list(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, bool main_peer, t_mka_peer_state type);
 bool mka_encode_peer_list(t_MKA_bus bus, uint8_t *packet, uint32_t *length);
-bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, uint32_t xpn_o_high, uint32_t xpn_l_high);
+bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len);
 bool mka_encode_sak_use(t_MKA_bus bus, uint8_t *packet, uint32_t *length);
 bool mka_handle_distributed_sak(t_MKA_bus bus, uint8_t const*param, uint32_t body_len);
 bool mka_encode_distributed_sak(t_MKA_bus bus, uint8_t *packet, uint32_t *length);
-bool mka_handle_xpn(t_MKA_bus bus, uint8_t const*param, uint32_t body_len, uint32_t*xpn_o_high, uint32_t*xpn_l_high);
 bool mka_encode_xpn(t_MKA_bus bus, uint8_t *packet, uint32_t *length);
 bool mka_handle_announcement_macsec_ciphersuites(t_MKA_bus bus, uint8_t const*tlv, uint32_t length);
 bool mka_handle_announcements(t_MKA_bus bus, uint8_t const*param, uint32_t body_len);
@@ -509,6 +508,19 @@ static inline bool mka_is_cipher_xpn(t_MKA_ciphsuite cipher)
 {
     return (MKA_CS_ID_GCM_AES_XPN_256 == cipher) ||
             (MKA_CS_ID_GCM_AES_XPN_128 == cipher);
+}
+
+static inline void mka_update_laccpn_xpn_logic(t_MKA_sak*dst, uint32_t laccpn)
+{
+    uint64_t new_pn = dst->next_pn & 0xFFFFFFFF00000000UL; // 32 msb (XPN ciphersuites)
+    new_pn = new_pn | (uint64_t)laccpn; // add 32 lsb from peer
+
+    // XPN wrap-around (assuming time to wrap-around << MKA period, which is a safe assumption up to 1Tb/s)
+    if (new_pn < dst->next_pn) {
+        new_pn += 0x100000000UL; // Increase by 2^32
+    }
+
+    dst->next_pn = new_pn; // update
 }
 
 #ifdef __cplusplus
