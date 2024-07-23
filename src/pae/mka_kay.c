@@ -1213,7 +1213,7 @@ bool mka_create_new_sak(t_MKA_bus bus)
     t_mka_participant*const participant = &ctx->participant;
     t_MKA_key sak_holder;
     t_MKA_sak* const sak = &participant->new_sak;
-    uint32_t kn = participant->current_sak.identifier.kn + 1U;
+    uint32_t const kn = participant->kn + 1U;
     uint8_t an = (participant->current_sak.association_number + 1U) & 3U;
     uint32_t key_size;
     bool result;
@@ -1275,6 +1275,8 @@ bool mka_create_new_sak(t_MKA_bus bus)
 
         result = MKA_WrapKey(&participant->kek, &sak_holder, participant->new_sak_wrapped);
         memset(&sak_holder, 0, sizeof(sak_holder));
+
+        ++participant->kn;
     }
 
     return result;
