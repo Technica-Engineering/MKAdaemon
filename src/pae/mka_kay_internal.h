@@ -168,6 +168,7 @@ typedef struct {
 
     uint8_t             mi[MKA_MI_LENGTH];
     uint32_t            mn;
+    uint32_t            kn; // Latest generated key number
 
     bool                generate_new_sak;
     bool                distribute_sak;
