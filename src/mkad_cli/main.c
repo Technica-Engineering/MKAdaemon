@@ -248,7 +248,7 @@ int main( int argc, char *argv[] )
                     printf("Requested bus is not available\n");
                     exit(1);
                 }
-                strcpy(active_bus, (char *)xmlGetProp(node,(const unsigned char *)"name"));
+                strncpy(active_bus, (char *)xmlGetProp(node,(const unsigned char *)"name"), IFNAMSIZ);
             }
         }
     } else { // n_buses >1
@@ -256,7 +256,7 @@ int main( int argc, char *argv[] )
         for (node = first_child; node; node = node->next) {
             if (node->type == 1){
                 if (strcmp(selected_bus,(char *) xmlGetProp(node,(const unsigned char *)"name")) == 0){
-                    strcpy(active_bus, (char *) xmlGetProp(node,(const unsigned char *)"name"));
+                    strncpy(active_bus, (char *) xmlGetProp(node,(const unsigned char *)"name"), IFNAMSIZ);
                     bus_selected = true;
                 }
                 
