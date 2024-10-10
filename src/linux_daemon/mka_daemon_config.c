@@ -506,14 +506,15 @@ static bool validate_interface(yaml_event_t *event, char* context, t_config_elem
 
 static bool check_missing_elements(yaml_event_t *event, char const* context, t_config_elem const* elem_list, size_t list_size, bool* presence)
 {
-    char *missing_list = calloc(2048, 1);
+    const uint32_t missing_list_size = 2048;
+    char *missing_list = calloc(missing_list_size+1, 1);
     bool result = true;
     uint32_t i;
 
     for(i=0U; i<list_size; ++i) {
         if (elem_list[i].mandatory && !presence[i]) {
-            strcat(missing_list, (missing_list[0] != '\0') ? ", " : "");
-            strcat(missing_list, elem_list[i].name);
+            strncat(missing_list, (missing_list[0] != '\0') ? ", " : "", missing_list_size - strnlen(missing_list, missing_list_size));
+            strncat(missing_list, elem_list[i].name, missing_list_size - strnlen(missing_list, missing_list_size));
         }
     }
 
