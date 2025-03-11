@@ -889,7 +889,7 @@ bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len)
             continue_process = false;
         }
         else {
-            mka_update_laccpn_xpn_logic(osak, MKA_NTOHL(content->old_laccpn));
+            mka_update_laccpn_xpn_logic(osak, MKA_NTOHL(content->old_laccpn), is_cipher_xpn);
 
             if ((content->delay_protect > 0U) && (NULL != osak->rxsa)) {
                 MKA_SECY_ReceiveSA_UpdateNextPN(bus, osak->rxsa, osak->next_pn);
@@ -910,7 +910,7 @@ bool mka_handle_sak_use(t_MKA_bus bus, uint8_t const*param, uint32_t body_len)
             continue_process = false;
         }
         else {
-            mka_update_laccpn_xpn_logic(lsak, MKA_NTOHL(content->latest_laccpn));
+            mka_update_laccpn_xpn_logic(lsak, MKA_NTOHL(content->latest_laccpn), is_cipher_xpn);
 
             if ((content->delay_protect > 0U) && (NULL != lsak->rxsa)) {
                 MKA_SECY_ReceiveSA_UpdateNextPN(bus, lsak->rxsa, lsak->next_pn);
