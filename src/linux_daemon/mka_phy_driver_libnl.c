@@ -1368,7 +1368,7 @@ t_MKA_result MKA_PHY_GetTxSANextPN(t_MKA_bus bus, uint8_t an, t_MKA_pn* next_pn)
 
     err = txsc_cache_update(bus);
     pthread_mutex_lock(&txsc_info_cache_mutex);
-    *next_pn = my_libnl_status->txsc_info_cache_data.txpn;
+    *next_pn = my_libnl_status->txsc_info_cache_data.txpn[an];
     pthread_mutex_unlock(&txsc_info_cache_mutex);
     MKA_LOG_DEBUG2("%s: err %d result %d", __func__, err,
            *next_pn);
