@@ -114,8 +114,6 @@ secy_polling_ms: 500
 #   DISABLE     -> MKA negotiation without MACSEC
 #   INTEGRITY   -> Negotiates MACSEC with integrity only, no confidentiality
 #   CONF_0      -> Negotiates MACSEC with integrity and confidentiality, offset 0
-#   CONF_30     -> Negotiates MACSEC with integrity and confidentiality, offset 30
-#   CONF_50     -> Negotiates MACSEC with integrity and confidentiality, offset 50
 #
 # NOTE: With option DISABLE, please also consider the following two settings are
 #           necessary in order to achieve communication based on MKA authentication:
