@@ -828,20 +828,8 @@ static bool parse_elem_macsec_mode(yaml_parser_t *parser, yaml_event_t *event, t
         cfg->kay.macsec_desired = true;
         cfg->impl.conf_offset_preference = MKA_CONFIDENTIALITY_OFFSET_0;
     }
-    else if (STR_EQUAL("conf_30", event->data.scalar.value)) {
-        cfg->port_capabilities.macsec = true;
-        cfg->kay.macsec_capable = MKA_MACSEC_INT_CONF_0_30_50;
-        cfg->kay.macsec_desired = true;
-        cfg->impl.conf_offset_preference = MKA_CONFIDENTIALITY_OFFSET_30;
-    }
-    else if (STR_EQUAL("conf_50", event->data.scalar.value)) {
-        cfg->port_capabilities.macsec = true;
-        cfg->kay.macsec_capable = MKA_MACSEC_INT_CONF_0_30_50;
-        cfg->kay.macsec_desired = true;
-        cfg->impl.conf_offset_preference = MKA_CONFIDENTIALITY_OFFSET_50;
-    }
     else {
-        FATAL_AT(event, "while importing [%s], value [%s] invalid, possible values {disable, integrity, conf_0, conf_30, conf_50}",
+        FATAL_AT(event, "while importing [%s], value [%s] invalid, possible values {disable, integrity, conf_0}",
                 elem->name, event->data.scalar.value);
         result = false;
     }

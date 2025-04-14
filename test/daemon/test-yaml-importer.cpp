@@ -910,23 +910,15 @@ TEST_F(TestMacsecLevels, Confidentiality_0) {
 TEST_F(TestMacsecLevels, Confidentiality_30) {
     if0->macsec = "conf_30";
 
-    ASSERT_THAT(import(), Ne(nullptr));
-    EXPECT_THAT(test_config->bus_config[0].port_capabilities.macsec,    Eq(true));
-    EXPECT_THAT(test_config->bus_config[0].kay.macsec_capable,          Eq(MKA_MACSEC_INT_CONF_0_30_50));
-    EXPECT_THAT(test_config->bus_config[0].kay.macsec_desired,          Eq(true));
-    EXPECT_THAT(test_config->bus_config[0].impl.cipher_preference[0],   Ne(MKA_CS_NULL));
-    EXPECT_THAT(test_config->bus_config[0].impl.conf_offset_preference, Eq(MKA_CONFIDENTIALITY_OFFSET_30));
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("invalid, possible values {disable, integrity, conf_0}"), _));
+    ASSERT_THAT(import(), Eq(nullptr));
 }
 
 TEST_F(TestMacsecLevels, Confidentiality_50) {
     if0->macsec = "conf_50";
 
-    ASSERT_THAT(import(), Ne(nullptr));
-    EXPECT_THAT(test_config->bus_config[0].port_capabilities.macsec,    Eq(true));
-    EXPECT_THAT(test_config->bus_config[0].kay.macsec_capable,          Eq(MKA_MACSEC_INT_CONF_0_30_50));
-    EXPECT_THAT(test_config->bus_config[0].kay.macsec_desired,          Eq(true));
-    EXPECT_THAT(test_config->bus_config[0].impl.cipher_preference[0],   Ne(MKA_CS_NULL));
-    EXPECT_THAT(test_config->bus_config[0].impl.conf_offset_preference, Eq(MKA_CONFIDENTIALITY_OFFSET_50));
+    EXPECT_CALL(mocks, print_action(LoggingMessageContains("invalid, possible values {disable, integrity, conf_0}"), _));
+    ASSERT_THAT(import(), Eq(nullptr));
 }
 
 struct TestUnauthAllowedValues : public BasicTest, public ::testing::WithParamInterface<std::tuple<char const*, t_MKA_unauth_allow>> { };
